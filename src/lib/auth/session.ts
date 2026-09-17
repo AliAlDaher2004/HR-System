@@ -32,7 +32,21 @@ export async function getCurrentUser(): Promise<UserSession | null> {
   }
 
   const db = getDb();
-  const dbUsers = await db.select().from(schema.users).where(eq(schema.users.email, userEmail));
+  let dbUsers = await db.select().from(schema.users).where(eq(schema.users.email, userEmail));
+
+  if (dbUsers.length === 0) {
+    try {
+      await db.insert(schema.users).values({
+        email: userEmail,
+        fullName: userEmail.split('@')[0] || 'مستخدم النظام',
+        role: 'ADMIN',
+        active: true,
+      });
+      dbUsers = await db.select().from(schema.users).where(eq(schema.users.email, userEmail));
+    } catch {
+      return null;
+    }
+  }
 
   if (dbUsers.length === 0) {
     return null;
