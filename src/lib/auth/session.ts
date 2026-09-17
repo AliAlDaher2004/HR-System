@@ -13,7 +13,7 @@ export async function getCurrentUser(): Promise<UserSession | null> {
   let userId: string | null = null;
 
   if (devSessionEmail) {
-    userEmail = devSessionEmail;
+    userEmail = decodeURIComponent(devSessionEmail);
   } else {
     try {
       const supabase = await createServerSupabaseClient();
