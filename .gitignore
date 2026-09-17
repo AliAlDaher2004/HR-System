@@ -1,0 +1,41 @@
+# Dependencies
+/node_modules
+/.pnpm-store
+
+# Next.js build output
+/.next/
+/out/
+/build
+
+# Production build artifacts
+tsconfig.tsbuildinfo
+
+# Environment files & secrets (DO NOT COMMIT)
+.env
+.env.local
+.env.development
+.env.staging
+.env.production
+!.env.example
+
+# Local database & storage files
+/data/
+/storage/
+*.db
+*.sqlite
+
+# Scratch / temporary scripts
+scratch_*.ts
+scratch/
+
+# Debug logs & test output
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+coverage/
+.vitest/
+
+# OS metadata files
+.DS_Store
+Thumbs.db
