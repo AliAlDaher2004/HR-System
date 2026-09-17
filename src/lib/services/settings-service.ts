@@ -6,15 +6,6 @@ let columnChecked = false;
 export async function getSystemSettings() {
   const db = getDb();
 
-  if (!columnChecked) {
-    try {
-      await db.execute(sql`ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS default_ot_rate NUMERIC(12, 3) NOT NULL DEFAULT 2.500;`);
-      columnChecked = true;
-    } catch {
-      // Ignore DDL errors
-    }
-  }
-
   try {
     const [row] = await db.select().from(schema.settings).limit(1);
     if (!row) return null;

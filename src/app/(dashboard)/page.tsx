@@ -2,7 +2,7 @@ import React from 'react';
 import { getCurrentUser } from '@/lib/auth/session';
 import { redirect } from 'next/navigation';
 import { getDb, schema } from '@/db';
-import { eq, and, sql, gte, lte } from 'drizzle-orm';
+import { eq, and, ne, gte, lte } from 'drizzle-orm';
 import { RBAC } from '@/lib/auth/rbac';
 import Link from 'next/link';
 import { getSystemSettings } from '@/lib/services/settings-service';
@@ -34,7 +34,7 @@ export default async function DashboardPage() {
       ? db.select().from(schema.payroll).where(
           and(
             eq(schema.payroll.periodStart, `${currentMonthStr}-01`),
-            sql`status != 'CANCELLED'`
+            ne(schema.payroll.status, 'CANCELLED')
           )
         )
       : Promise.resolve([]),
