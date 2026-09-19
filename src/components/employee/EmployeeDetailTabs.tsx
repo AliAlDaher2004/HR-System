@@ -910,13 +910,15 @@ export function EmployeeDetailTabs({
         {/* TAB 7: LEAVES */}
         {currentTab === 'leaves' && (
           <div className="space-y-3 text-xs">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {leaveBalances.map((b) => (
-                <div key={b.leaveType} className="win-sunken bg-white p-2 text-center">
-                  <div className="text-[11px] text-slate-600">{b.leaveType}</div>
+                <div key={b.id || b.leaveType} className="win-sunken bg-white p-2.5 text-center border-t-2 border-[#0A246A]">
+                  <div className="text-xs font-bold text-slate-700 mb-0.5">
+                    {b.leaveTypeLabel || (b.leaveType === 'ANNUAL' ? '🌴 إجازة سنوية' : b.leaveType === 'SICK' ? '🏥 إجازة مرضية' : b.leaveType === 'EMERGENCY' ? '🚨 إجازة طارئة' : 'إجازة أخرى')}
+                  </div>
                   <div className="text-base font-bold text-[#0A246A]">{b.remainingDays} يوم متبقي</div>
-                  <div className="text-[10px] text-slate-400">
-                    مستحق: {b.allocatedDays} | مستخدم: {b.usedDays}
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    المستحق: <strong className="font-mono text-black">{b.totalEntitled || b.openingDays}</strong> | المستخدم: <strong className="font-mono text-rose-800">{b.usedDays}</strong>
                   </div>
                 </div>
               ))}
@@ -925,35 +927,49 @@ export function EmployeeDetailTabs({
             <div className="win-sunken bg-white overflow-x-auto">
               <table className="win-table w-full text-right text-xs">
                 <thead>
-                  <tr>
-                    <th>النوع</th>
-                    <th>من</th>
-                    <th>إلى</th>
-                    <th>الأيام</th>
-                    <th>الحالة</th>
+                  <tr className="bg-[#ECE9D8] text-[#0A246A]">
+                    <th className="w-28">نوع الإجازة</th>
+                    <th className="w-24">من تاريخ</th>
+                    <th className="w-24">إلى تاريخ</th>
+                    <th className="w-20 text-center">الأيام</th>
+                    <th>وصف / سبب الإجازة</th>
+                    <th className="w-24 text-center">الحالة</th>
                   </tr>
                 </thead>
                 <tbody>
                   {leaveRequests.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-4 text-center text-slate-400">
-                        لا توجد طلبات إجازة
+                      <td colSpan={6} className="py-4 text-center text-slate-400">
+                        لا توجد طلبات إجازة مسجلة لهذا الموظف
                       </td>
                     </tr>
                   ) : (
                     leaveRequests.map((r) => (
-                      <tr key={r.id}>
-                        <td>{r.leaveType}</td>
+                      <tr key={r.id} className="hover:bg-[#E8EEF7]">
+                        <td className="font-bold text-[#0A246A]">
+                          {r.leaveTypeLabel || (r.leaveType === 'ANNUAL' ? 'إجازة سنوية' : r.leaveType === 'SICK' ? 'إجازة مرضية' : r.leaveType === 'EMERGENCY' ? 'إجازة طارئة' : (!r.paid ? 'إجازة بدون أجر' : 'إجازة اعتيادية'))}
+                        </td>
                         <td className="font-mono">{r.startDate}</td>
                         <td className="font-mono">{r.endDate}</td>
-                        <td className="font-mono font-bold">{r.daysCount}</td>
-                        <td>
+                        <td className="font-mono font-bold text-center text-emerald-800">
+                          {r.chargeDays || r.daysCount || '-'} يوم
+                        </td>
+                        <td className="text-slate-700 font-medium">
+                          {r.reason || <span className="text-slate-400 italic">بدون وصف</span>}
+                        </td>
+                        <td className="text-center">
                           <Badge
                             variant={
-                              r.status === 'APPROVED' ? 'approved' : r.status === 'REJECTED' ? 'rejected' : 'pending'
+                              r.status === 'APPROVED' ? 'approved' : r.status === 'REJECTED' ? 'rejected' : 'draft'
                             }
                           >
-                            {r.status}
+                            {r.status === 'APPROVED'
+                              ? 'معتمد'
+                              : r.status === 'REJECTED'
+                              ? 'مرفوض'
+                              : r.status === 'PENDING'
+                              ? 'قيد الانتظار'
+                              : r.status}
                           </Badge>
                         </td>
                       </tr>

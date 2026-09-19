@@ -7,12 +7,31 @@ export async function getLeaveBalances(employeeId: string, year?: number) {
   const db = getDb();
   const currentYear = year || new Date().getFullYear();
 
-  const balances = await db.select().from(schema.leaveBalances).where(
+  let balances = await db.select().from(schema.leaveBalances).where(
     and(
       eq(schema.leaveBalances.employeeId, employeeId),
       eq(schema.leaveBalances.year, currentYear)
     )
   );
+
+  // Auto-seed initial leave balance categories if not present
+  if (balances.length === 0) {
+    try {
+      await db.insert(schema.leaveBalances).values([
+        { employeeId, year: currentYear, leaveType: 'ANNUAL', openingDays: '21.00', grantedDays: '0.00', adjustmentDays: '0.00' },
+        { employeeId, year: currentYear, leaveType: 'SICK', openingDays: '14.00', grantedDays: '0.00', adjustmentDays: '0.00' },
+        { employeeId, year: currentYear, leaveType: 'EMERGENCY', openingDays: '7.00', grantedDays: '0.00', adjustmentDays: '0.00' },
+      ]);
+      balances = await db.select().from(schema.leaveBalances).where(
+        and(
+          eq(schema.leaveBalances.employeeId, employeeId),
+          eq(schema.leaveBalances.year, currentYear)
+        )
+      );
+    } catch {
+      // In case of parallel creation
+    }
+  }
 
   // Compute used and remaining days
   const enrichedBalances = await Promise.all(
@@ -28,8 +47,20 @@ export async function getLeaveBalances(employeeId: string, year?: number) {
       const totalEntitled = parseFloat(b.openingDays) + parseFloat(b.grantedDays) + parseFloat(b.adjustmentDays);
       const remainingDays = Math.max(0, totalEntitled - usedDays);
 
+      const typeLabel =
+        b.leaveType === 'ANNUAL'
+          ? 'إجازة سنوية'
+          : b.leaveType === 'SICK'
+          ? 'إجازة مرضية'
+          : b.leaveType === 'EMERGENCY'
+          ? 'إجازة طارئة'
+          : b.leaveType === 'OTHER'
+          ? 'إجازة أخرى / بدون أجر'
+          : b.leaveType;
+
       return {
         ...b,
+        leaveTypeLabel: typeLabel,
         usedDays: usedDays.toFixed(2),
         remainingDays: remainingDays.toFixed(2),
         totalEntitled: totalEntitled.toFixed(2),
@@ -69,17 +100,39 @@ export async function getLeaveRequests(
     approvedBy: schema.leaveRequests.approvedBy,
     approvedAt: schema.leaveRequests.approvedAt,
     createdAt: schema.leaveRequests.createdAt,
+    leaveType: schema.leaveBalances.leaveType,
   })
   .from(schema.leaveRequests)
-  .innerJoin(schema.employees, eq(schema.leaveRequests.employeeId, schema.employees.id));
+  .innerJoin(schema.employees, eq(schema.leaveRequests.employeeId, schema.employees.id))
+  .leftJoin(schema.leaveBalances, eq(schema.leaveRequests.balanceId, schema.leaveBalances.id));
 
   const conditions = [];
   if (filters?.employeeId) conditions.push(eq(schema.leaveRequests.employeeId, filters.employeeId));
   if (filters?.status) conditions.push(eq(schema.leaveRequests.status, filters.status));
 
-  return conditions.length > 0
+  const rows = conditions.length > 0
     ? await query.where(and(...conditions)).orderBy(desc(schema.leaveRequests.createdAt))
     : await query.orderBy(desc(schema.leaveRequests.createdAt));
+
+  return rows.map((r: any) => {
+    const rawType = r.leaveType;
+    const typeLabel =
+      rawType === 'ANNUAL'
+        ? 'إجازة سنوية'
+        : rawType === 'SICK'
+        ? 'إجازة مرضية'
+        : rawType === 'EMERGENCY'
+        ? 'إجازة طارئة'
+        : rawType === 'OTHER'
+        ? 'إجازة أخرى'
+        : (!r.paid ? 'إجازة بدون أجر' : (r.reason || 'إجازة اعتيادية'));
+
+    return {
+      ...r,
+      daysCount: r.chargeDays,
+      leaveTypeLabel: typeLabel,
+    };
+  });
 }
 
 export async function createLeaveRequest(

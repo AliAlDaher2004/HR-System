@@ -97,7 +97,7 @@ export const leaveBalances = pgTable('leave_balances', {
   id: uuid('id').primaryKey().defaultRandom(),
   employeeId: uuid('employee_id').notNull().references(() => employees.id),
   year: integer('year').notNull(),
-  leaveType: varchar('leave_type', { length: 20 }).notNull().$type<'ANNUAL' | 'SICK' | 'OTHER'>(),
+  leaveType: varchar('leave_type', { length: 20 }).notNull().$type<'ANNUAL' | 'SICK' | 'EMERGENCY' | 'OTHER'>(),
   openingDays: numeric('opening_days', { precision: 5, scale: 2 }).notNull().default('0'),
   grantedDays: numeric('granted_days', { precision: 5, scale: 2 }).notNull().default('0'),
   adjustmentDays: numeric('adjustment_days', { precision: 5, scale: 2 }).notNull().default('0'),
