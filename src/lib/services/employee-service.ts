@@ -18,7 +18,9 @@ export interface BasicEmployeeDTO {
   status: 'ACTIVE' | 'TERMINATED';
   socialSecurityRegistered: boolean;
   socialSecurityRegistrationDate: string | null;
-  employmentType: 'PERMANENT' | 'DAILY_WORKER';
+  employmentType: 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER';
+  probationEndDate: string | null;
+  probationStatus: 'IN_PROBATION' | 'PROBATION_ENDED' | 'PASSED' | 'FAILED' | 'NOT_APPLICABLE' | null;
   dailyRate: string | null;
   temporaryStartDate: string | null;
   temporaryEndDate: string | null;
@@ -46,13 +48,22 @@ export interface DetailedEmployeeDTO extends BasicEmployeeDTO {
   } | null;
 }
 
+export function calculateProbationEndDate(startDateStr: string): string {
+  const [year, month, day] = startDateStr.split('-').map(Number);
+  const d = new Date(year, month - 1 + 3, day);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const da = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${da}`;
+}
+
 export async function getEmployees(
   actor: UserSession,
   filters?: {
     search?: string;
     department?: string;
     status?: 'ACTIVE' | 'TERMINATED';
-    employmentType?: 'PERMANENT' | 'DAILY_WORKER';
+    employmentType?: 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER';
     socialSecurityRegistered?: boolean;
   }
 ): Promise<BasicEmployeeDTO[]> {
@@ -105,6 +116,8 @@ export async function getEmployees(
     socialSecurityRegistered: emp.socialSecurityRegistered,
     socialSecurityRegistrationDate: emp.socialSecurityRegistrationDate,
     employmentType: emp.employmentType,
+    probationEndDate: emp.probationEndDate || (emp.employmentType === 'PROBATIONARY' ? calculateProbationEndDate(emp.startDate) : null),
+    probationStatus: emp.probationStatus || (emp.employmentType === 'PROBATIONARY' ? 'IN_PROBATION' : 'NOT_APPLICABLE'),
     dailyRate: canViewFinancial ? emp.dailyRate : null,
     temporaryStartDate: emp.temporaryStartDate,
     temporaryEndDate: emp.temporaryEndDate,
@@ -146,6 +159,8 @@ export async function getEmployeeById(
     socialSecurityRegistered: emp.socialSecurityRegistered,
     socialSecurityRegistrationDate: emp.socialSecurityRegistrationDate,
     employmentType: emp.employmentType,
+    probationEndDate: emp.probationEndDate || (emp.employmentType === 'PROBATIONARY' ? calculateProbationEndDate(emp.startDate) : null),
+    probationStatus: emp.probationStatus || (emp.employmentType === 'PROBATIONARY' ? 'IN_PROBATION' : 'NOT_APPLICABLE'),
     dailyRate: canViewFinancial ? emp.dailyRate : null,
     temporaryStartDate: emp.temporaryStartDate,
     temporaryEndDate: emp.temporaryEndDate,
@@ -197,7 +212,7 @@ export async function createEmployee(
     endDate?: string;
     socialSecurityRegistered?: boolean;
     socialSecurityRegistrationDate?: string | null;
-    employmentType?: 'PERMANENT' | 'DAILY_WORKER';
+    employmentType?: 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER';
     dailyRate?: number | null;
     monthlyBasic?: number | null;
     monthlyAllowances?: number | null;
@@ -230,8 +245,6 @@ export async function createEmployee(
   }
 
   // Social Security validation:
-  // If socialSecurityRegistered is true => registration date is REQUIRED.
-  // If socialSecurityRegistered is false => registration date MUST be null.
   const ssRegistered = Boolean(data.socialSecurityRegistered);
   let ssDate: string | null = null;
   if (ssRegistered) {
@@ -243,9 +256,20 @@ export async function createEmployee(
     ssDate = null;
   }
 
-  // Employment type & daily worker rules
+  // Employment type & daily worker / probation rules
   const empType = data.employmentType || 'PERMANENT';
   let dailyRateStr: string | null = null;
+  let probationEndDateVal: string | null = null;
+  let probationStatusVal: 'IN_PROBATION' | 'PROBATION_ENDED' | 'PASSED' | 'FAILED' | 'NOT_APPLICABLE' = 'NOT_APPLICABLE';
+
+  if (empType === 'PROBATIONARY') {
+    probationEndDateVal = calculateProbationEndDate(data.startDate);
+    probationStatusVal = 'IN_PROBATION';
+  } else {
+    probationEndDateVal = null;
+    probationStatusVal = 'NOT_APPLICABLE';
+  }
+
   if (empType === 'DAILY_WORKER') {
     if (data.dailyRate === undefined || data.dailyRate === null || data.dailyRate < 0) {
       throw new Error('أجرة المياومة مطلوبة لعمال المياومة ويجب أن تكون صفر أو أكبر');
@@ -277,6 +301,8 @@ export async function createEmployee(
     socialSecurityRegistered: ssRegistered,
     socialSecurityRegistrationDate: ssDate,
     employmentType: empType,
+    probationEndDate: probationEndDateVal,
+    probationStatus: probationStatusVal,
     dailyRate: dailyRateStr,
     temporaryStartDate: data.temporaryStartDate || null,
     temporaryEndDate: data.temporaryEndDate || null,
@@ -299,8 +325,8 @@ export async function createEmployee(
     });
   }
 
-  // Auto-create initial contract for Permanent Employee if basic salary is specified
-  if (empType === 'PERMANENT' && data.monthlyBasic !== undefined && data.monthlyBasic !== null && data.monthlyBasic > 0) {
+  // Auto-create initial contract for Permanent / Probationary Employee if basic salary is specified
+  if ((empType === 'PERMANENT' || empType === 'PROBATIONARY') && data.monthlyBasic !== undefined && data.monthlyBasic !== null && data.monthlyBasic > 0) {
     const basic = Number(data.monthlyBasic);
     const allowances = data.monthlyAllowances ? Number(data.monthlyAllowances) : 0;
     const total = basic + allowances;
@@ -311,14 +337,14 @@ export async function createEmployee(
       ? Number(data.otRate)
       : Math.round(((total / 240) * 1.5) * 1000) / 1000;
 
-    const isSigned = data.contractSigned !== undefined ? Boolean(data.contractSigned) : true;
+    const isSigned = data.contractSigned !== undefined ? Boolean(data.contractSigned) : (empType === 'PERMANENT');
     const signedDate = isSigned ? (data.contractSignedDate || data.startDate) : null;
 
     const { createContract } = await import('./contract-service');
     await createContract(actor, {
       employeeId: inserted.id,
       startDate: data.startDate,
-      endDate: data.endDate || null,
+      endDate: data.endDate || (empType === 'PROBATIONARY' ? probationEndDateVal : null),
       monthlyBasic: basic,
       monthlyAllowances: allowances,
       unpaidDayRate,
@@ -339,6 +365,7 @@ export async function createEmployee(
       name: inserted.name,
       employmentType: inserted.employmentType,
       socialSecurityRegistered: inserted.socialSecurityRegistered,
+      probationEndDate: inserted.probationEndDate,
     },
   });
 
@@ -358,7 +385,7 @@ export async function updateEmployee(
     status?: 'ACTIVE' | 'TERMINATED';
     socialSecurityRegistered?: boolean;
     socialSecurityRegistrationDate?: string | null;
-    employmentType?: 'PERMANENT' | 'DAILY_WORKER';
+    employmentType?: 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER';
     dailyRate?: number | null;
     temporaryStartDate?: string | null;
     temporaryEndDate?: string | null;
@@ -411,6 +438,21 @@ export async function updateEmployee(
     throw new Error('أجرة المياومة مطلوبة لعمال المياومة ويجب أن تكون صفر أو أكبر');
   }
 
+  let probationEndDateVal = current.probationEndDate;
+  let probationStatusVal = current.probationStatus;
+  if (data.employmentType !== undefined || data.startDate !== undefined) {
+    if (empType === 'PROBATIONARY') {
+      probationEndDateVal = calculateProbationEndDate(effectiveStart);
+      probationStatusVal = 'IN_PROBATION';
+    } else if (empType === 'PERMANENT') {
+      probationEndDateVal = null;
+      probationStatusVal = (current.probationStatus === 'IN_PROBATION' || current.probationStatus === 'PROBATION_ENDED') ? 'PASSED' : 'NOT_APPLICABLE';
+    } else {
+      probationEndDateVal = null;
+      probationStatusVal = 'NOT_APPLICABLE';
+    }
+  }
+
   const [updated] = await db.update(schema.employees)
     .set({
       name: data.name?.trim() ?? current.name,
@@ -423,6 +465,8 @@ export async function updateEmployee(
       socialSecurityRegistered: ssRegistered,
       socialSecurityRegistrationDate: ssDate,
       employmentType: empType,
+      probationEndDate: probationEndDateVal,
+      probationStatus: probationStatusVal,
       dailyRate: dailyRateStr,
       temporaryStartDate: data.temporaryStartDate !== undefined ? data.temporaryStartDate : current.temporaryStartDate,
       temporaryEndDate: data.temporaryEndDate !== undefined ? data.temporaryEndDate : current.temporaryEndDate,
@@ -596,3 +640,147 @@ export async function getEmployeeIdentityImages(
 
   return { frontUrl, backUrl };
 }
+
+export interface EmployeeDueForContractDTO {
+  id: string;
+  employeeNo: string;
+  name: string;
+  department: string;
+  jobTitle: string;
+  startDate: string;
+  probationEndDate: string;
+  daysPassedSinceProbationEnd: number;
+  contractSigned: boolean;
+}
+
+export async function getEmployeesDueForContractSigning(
+  actor: UserSession
+): Promise<EmployeeDueForContractDTO[]> {
+  const db = getDb();
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Active employees
+  const activeEmps = await db.select().from(schema.employees)
+    .where(eq(schema.employees.status, 'ACTIVE'));
+
+  const allContracts = await db.select().from(schema.contracts);
+
+  const results: EmployeeDueForContractDTO[] = [];
+
+  for (const emp of activeEmps) {
+    if (emp.employmentType === 'PROBATIONARY' || emp.probationStatus === 'IN_PROBATION' || emp.probationStatus === 'PROBATION_ENDED') {
+      const probationEnd = emp.probationEndDate || calculateProbationEndDate(emp.startDate);
+
+      // Probation period has ended (or ends today)
+      if (todayStr >= probationEnd) {
+        const empContracts = allContracts.filter((c: any) => c.employeeId === emp.id);
+        const hasSignedPermanentContract = empContracts.some((c: any) => c.contractSigned === true && emp.employmentType === 'PERMANENT');
+
+        if (!hasSignedPermanentContract) {
+          const diffMs = new Date(todayStr).getTime() - new Date(probationEnd).getTime();
+          const daysPassed = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+
+          results.push({
+            id: emp.id,
+            employeeNo: emp.employeeNo,
+            name: emp.name,
+            department: emp.department,
+            jobTitle: emp.jobTitle,
+            startDate: emp.startDate,
+            probationEndDate: probationEnd,
+            daysPassedSinceProbationEnd: daysPassed,
+            contractSigned: false,
+          });
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
+export async function transitionProbationToPermanent(
+  actor: UserSession,
+  employeeId: string,
+  contractDetails?: {
+    monthlyBasic?: number;
+    monthlyAllowances?: number;
+    unpaidDayRate?: number;
+    otRate?: number;
+    contractSignedDate?: string;
+  }
+) {
+  requireRole(actor, ['ADMIN', 'HR']);
+  const db = getDb();
+
+  const [emp] = await db.select().from(schema.employees).where(eq(schema.employees.id, employeeId));
+  if (!emp) {
+    throw new Error('الموظف غير موجود');
+  }
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const signedDate = contractDetails?.contractSignedDate || todayStr;
+
+  const [updated] = await db.update(schema.employees)
+    .set({
+      employmentType: 'PERMANENT',
+      probationStatus: 'PASSED',
+      probationEndDate: null,
+      updatedBy: actor.id,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.employees.id, employeeId))
+    .returning();
+
+  if (contractDetails?.monthlyBasic && contractDetails.monthlyBasic > 0) {
+    const basic = Number(contractDetails.monthlyBasic);
+    const allowances = contractDetails.monthlyAllowances ? Number(contractDetails.monthlyAllowances) : 0;
+    const total = basic + allowances;
+    const unpaidDayRate = contractDetails.unpaidDayRate !== undefined
+      ? Number(contractDetails.unpaidDayRate)
+      : Math.round((total / 30) * 1000) / 1000;
+    const otRate = contractDetails.otRate !== undefined
+      ? Number(contractDetails.otRate)
+      : Math.round(((total / 240) * 1.5) * 1000) / 1000;
+
+    const { createContract } = await import('./contract-service');
+    await createContract(actor, {
+      employeeId,
+      startDate: signedDate,
+      monthlyBasic: basic,
+      monthlyAllowances: allowances,
+      unpaidDayRate,
+      otRate,
+      contractSigned: true,
+      contractSignedDate: signedDate,
+    });
+  } else {
+    // Check if employee has an existing contract and update it to signed
+    const existingContracts = await db.select().from(schema.contracts)
+      .where(eq(schema.contracts.employeeId, employeeId));
+    if (existingContracts.length > 0) {
+      const activeContract = existingContracts[0];
+      const { updateContract } = await import('./contract-service');
+      await updateContract(actor, activeContract.id, {
+        contractSigned: true,
+        contractSignedDate: signedDate,
+      });
+    }
+  }
+
+  await logAuditEvent({
+    actor,
+    tableName: 'employees',
+    recordId: employeeId,
+    action: 'TRANSITION_PROBATION_TO_PERMANENT',
+    oldStatus: emp.employmentType,
+    newStatus: 'PERMANENT',
+    metadata: {
+      probationEndDate: emp.probationEndDate,
+      contractSignedDate: signedDate,
+    },
+  });
+
+  return updated;
+}
+

@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui';
 import { Modal } from '@/components/ui/Modal';
 import { formatDurationArabic } from '@/lib/utils/time';
 import { UpdateEmployeeStatusModal } from './UpdateEmployeeStatusModal';
+import { EditEmployeeModal } from './EditEmployeeModal';
 import { ContractSignedToggle } from './ContractSignedToggle';
 
 interface EmployeeDetailTabsProps {
@@ -24,6 +25,7 @@ interface EmployeeDetailTabsProps {
   updateSocialSecurityAction?: (formData: FormData) => Promise<void>;
   uploadIdentityImageAction?: (side: 'front' | 'back', formData: FormData) => Promise<void>;
   updateScheduleAction?: (formData: FormData) => Promise<void>;
+  updateEmployeeAction?: (formData: FormData) => Promise<void>;
   updateStatusAction?: (formData: FormData) => Promise<void>;
   toggleContractSignedAction?: (formData: FormData) => Promise<void>;
 }
@@ -44,6 +46,7 @@ export function EmployeeDetailTabs({
   updateSocialSecurityAction,
   uploadIdentityImageAction,
   updateScheduleAction,
+  updateEmployeeAction,
   updateStatusAction,
   toggleContractSignedAction,
 }: EmployeeDetailTabsProps) {
@@ -167,17 +170,25 @@ export function EmployeeDetailTabs({
         {currentTab === 'basic' && (
           <div className="space-y-3">
             <fieldset className="border border-[#808080] p-3 bg-white">
-              <div className="flex justify-between items-center px-1 mb-2">
+              <div className="flex flex-wrap justify-between items-center px-1 mb-2 gap-2">
                 <legend className="text-black font-bold text-xs">البيانات الوظيفية الأساسية</legend>
-                {['ADMIN', 'HR'].includes(userRole) && updateStatusAction && (
-                  <UpdateEmployeeStatusModal
-                    employeeId={employee.id}
-                    employeeName={employee.name}
-                    currentStatus={employee.status}
-                    currentEndDate={employee.endDate}
-                    updateStatusAction={updateStatusAction}
-                  />
-                )}
+                <div className="flex items-center gap-2">
+                  {['ADMIN', 'HR'].includes(userRole) && updateEmployeeAction && (
+                    <EditEmployeeModal
+                      employee={employee}
+                      updateEmployeeAction={updateEmployeeAction}
+                    />
+                  )}
+                  {['ADMIN', 'HR'].includes(userRole) && updateStatusAction && (
+                    <UpdateEmployeeStatusModal
+                      employeeId={employee.id}
+                      employeeName={employee.name}
+                      currentStatus={employee.status}
+                      currentEndDate={employee.endDate}
+                      updateStatusAction={updateStatusAction}
+                    />
+                  )}
+                </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
                 <div>
@@ -206,10 +217,16 @@ export function EmployeeDetailTabs({
                     className={`inline-block px-1.5 py-0.5 text-[11px] font-bold ${
                       employee.employmentType === 'DAILY_WORKER'
                         ? 'bg-amber-100 text-amber-900 border border-amber-400'
-                        : 'bg-blue-100 text-blue-900 border border-blue-400'
+                        : employee.employmentType === 'PROBATIONARY'
+                        ? 'bg-blue-100 text-blue-900 border border-blue-400'
+                        : 'bg-emerald-100 text-emerald-900 border border-emerald-400'
                     }`}
                   >
-                    {employee.employmentType === 'DAILY_WORKER' ? 'عامل مياومة (أجر يومي)' : 'موظف مثبت / دائم'}
+                    {employee.employmentType === 'DAILY_WORKER'
+                      ? 'عامل مياومة (أجر يومي)'
+                      : employee.employmentType === 'PROBATIONARY'
+                      ? 'عقد تجريبي (3 أشهر)'
+                      : 'موظف مثبت / دائم'}
                   </span>
                 </div>
                 <div>
@@ -227,6 +244,47 @@ export function EmployeeDetailTabs({
                   </Badge>
                 </div>
               </div>
+
+              {(employee.employmentType === 'PROBATIONARY' || employee.probationStatus === 'IN_PROBATION') && (
+                <div className="mt-3 p-2.5 bg-blue-50 border border-blue-400 text-blue-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 win-sunken">
+                  <div>
+                    <div className="font-bold text-xs text-blue-900 flex items-center gap-1">
+                      <span>⏳</span>
+                      <span>حالة الموظف: تحت التجربة (عقد 3 أشهر)</span>
+                    </div>
+                    <div className="text-[11px] text-slate-700 mt-0.5">
+                      تاريخ انتهاء فترة التجربة: <strong className="font-mono font-bold text-blue-900">{employee.probationEndDate || '-'}</strong>
+                    </div>
+                  </div>
+                  {['ADMIN', 'HR'].includes(userRole) && (
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => {
+                        if (confirm(`هل أنت تأكد من تثبيت الموظف (${employee.name}) وتوقيع العقد الدائم؟`)) {
+                          startTransition(async () => {
+                            try {
+                              const res = await fetch(`/api/employees/${employee.id}/transition-probation`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                              });
+                              const data = await res.json();
+                              if (!res.ok) throw new Error(data.error || 'فشل عملية التثبيت');
+                              alert('تم تثبيت الموظف وتحديث عقده إلى موظف دائم بنجاح.');
+                              window.location.reload();
+                            } catch (err: any) {
+                              alert(err.message || 'حدث خطأ أثناء تثبيت الموظف');
+                            }
+                          });
+                        }
+                      }}
+                      className="win-btn text-xs font-bold px-3 py-1 text-emerald-800"
+                    >
+                      ✔ تثبيت الموظف وتوقيع العقد الدائم
+                    </button>
+                  )}
+                </div>
+              )}
 
               {contracts.length > 0 && toggleContractSignedAction && (
                 <div className="mt-3 pt-2.5 border-t border-slate-200">
@@ -488,12 +546,34 @@ export function EmployeeDetailTabs({
         {/* TAB 4: WORK SCHEDULE */}
         {currentTab === 'schedule' && (
           <div className="space-y-3">
-            <fieldset className="border border-[#808080] p-3 bg-white">
-              <legend className="px-1 text-black font-bold text-xs">أوقات الدوام المخصصة وسعر خصم الدقائق</legend>
+            <fieldset className="border border-[#808080] p-3 bg-white space-y-3">
+              <legend className="px-1 text-black font-bold text-xs">نظام الدوام واحتساب دقائق التأخير والخصم</legend>
+
+              {/* Automatic Dual Shift Banner */}
+              <div className="win-sunken p-2.5 bg-[#F4F6F9] border border-blue-200">
+                <div className="font-bold text-[#0A246A] text-xs flex items-center gap-1 mb-1">
+                  <span>🔄</span>
+                  <span>نظام الورديات المتناوبة الذكي (التمييز التلقائي لدوام الموظف):</span>
+                </div>
+                <div className="text-xs text-slate-700 space-y-1">
+                  <div className="flex flex-wrap gap-3">
+                    <span className="bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-bold border border-amber-300">
+                      ☀️ الوردية الصباحية: 08:00 ص - 04:30 م
+                    </span>
+                    <span className="bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded font-bold border border-indigo-300">
+                      🌙 الوردية المسائية: 04:30 م - 01:00 ص
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    * يقوم النظام بتحديد وردية الموظف تلقائياً بناءً على ساعة تسجيل الحضور اليومي دون الحاجة إلى تحديد ثابت لكل موظف.
+                  </p>
+                </div>
+              </div>
+
               <form onSubmit={handleScheduleSubmit} className="space-y-3 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                   <div>
-                    <label className="block font-bold text-black mb-1">وقت بدء الدوام المجدول</label>
+                    <label className="block font-bold text-black mb-1">وقت بدء الدوام الصباحي المجدول</label>
                     <input
                       type="time"
                       name="workStartTime"
@@ -503,11 +583,11 @@ export function EmployeeDetailTabs({
                   </div>
 
                   <div>
-                    <label className="block font-bold text-black mb-1">وقت نهاية الدوام المجدول</label>
+                    <label className="block font-bold text-black mb-1">وقت نهاية الدوام الصباحي المجدول</label>
                     <input
                       type="time"
                       name="workEndTime"
-                      defaultValue={employee.workEndTime || '17:00'}
+                      defaultValue={employee.workEndTime || '16:30'}
                       className="win-input w-full py-1 px-2 font-mono font-bold"
                     />
                   </div>

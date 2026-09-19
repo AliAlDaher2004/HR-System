@@ -153,12 +153,33 @@ export default async function SettingsPage() {
             </div>
           </fieldset>
 
-          {/* Section 2: Default Work Schedule & Minute Lateness */}
-          <fieldset className="border border-[#808080] p-3 bg-white">
-            <legend className="px-1 text-[#0A246A] font-bold">مواعيد الدوام القياسية للشركة وسعر خصم الدقيقة</legend>
+          {/* Section 2: Approved Shift Schedule & Minute Lateness */}
+          <fieldset className="border border-[#808080] p-3 bg-white space-y-3">
+            <legend className="px-1 text-[#0A246A] font-bold">جدول الورديات المعتمدة وسعر خصم الدقائق والعمل الإضافي</legend>
+            
+            {/* Shift System Overview */}
+            <div className="win-sunken p-2.5 bg-[#F8F9FA] border border-blue-200">
+              <div className="font-bold text-[#0A246A] mb-1 text-xs flex items-center gap-1.5">
+                <span>⚡</span>
+                <span>نظام الورديات التدويري الذكي التلقائي (Auto-Detect Shift System):</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                <div className="p-2 bg-amber-50 border border-amber-300 rounded">
+                  <span className="font-bold text-amber-900 block">☀️ الوردية الصباحية (Morning Shift):</span>
+                  <span className="text-amber-800">من 08:00 صباحاً إلى 04:30 مساءً (08:00 - 16:30)</span>
+                  <span className="text-[10px] text-amber-700 block mt-0.5">تطبق تلقائياً عند تسجيل الحضور من 08:00 ص حتى 04:29 م.</span>
+                </div>
+                <div className="p-2 bg-indigo-50 border border-indigo-300 rounded">
+                  <span className="font-bold text-indigo-900 block">🌙 الوردية المسائية (Evening Shift):</span>
+                  <span className="text-indigo-800">من 04:30 مساءً إلى 01:00 صباح اليوم التالي (16:30 - 01:00)</span>
+                  <span className="text-[10px] text-indigo-700 block mt-0.5">تطبق تلقائياً عند تسجيل الحضور من 04:30 م وما بعدها.</span>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
               <div>
-                <label className="block font-bold text-black mb-0.5">وقت بدء الدوام الافتراضي</label>
+                <label className="block font-bold text-black mb-0.5">بدء الوردية الصباحية الافتراضي</label>
                 <input
                   type="time"
                   name="defaultWorkStartTime"
@@ -169,11 +190,11 @@ export default async function SettingsPage() {
               </div>
 
               <div>
-                <label className="block font-bold text-black mb-0.5">وقت نهاية الدوام الافتراضي</label>
+                <label className="block font-bold text-black mb-0.5">انتهاء الوردية الصباحية الافتراضي</label>
                 <input
                   type="time"
                   name="defaultWorkEndTime"
-                  defaultValue={settings?.defaultWorkEndTime?.slice(0, 5) || '17:00'}
+                  defaultValue={settings?.defaultWorkEndTime?.slice(0, 5) || '16:30'}
                   required
                   className="win-input w-full py-1 px-2 font-mono font-bold"
                 />

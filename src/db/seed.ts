@@ -72,7 +72,7 @@ export async function seedDatabase() {
       payrollPolicy: 'سياسة صرف الرواتب والأجور المعتمدة للشركة',
       payrollPolicyConfirmed: true,
       defaultWorkStartTime: '08:00:00',
-      defaultWorkEndTime: '17:00:00',
+      defaultWorkEndTime: '16:30:00',
       defaultBreakMinutes: 60,
       defaultMinuteDeductionRate: '0.300',
     });

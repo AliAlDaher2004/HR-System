@@ -16,6 +16,57 @@ export interface ShiftCalculation {
 import { formatDurationArabic, parseTimeToMinutes } from '../utils/time';
 export { formatDurationArabic, parseTimeToMinutes };
 
+export interface ShiftInfo {
+  shiftCode: 'MORNING' | 'EVENING' | 'CUSTOM';
+  shiftName: string;
+  schedStart: string;
+  schedEnd: string;
+}
+
+export function detectShift(
+  arrivalTimeStr: string,
+  empOverrideStart?: string | null,
+  empOverrideEnd?: string | null,
+  settings?: any
+): ShiftInfo {
+  if (!arrivalTimeStr) {
+    const start = empOverrideStart || settings?.morningShiftStartTime || '08:00';
+    const end = empOverrideEnd || settings?.morningShiftEndTime || '16:30';
+    return {
+      shiftCode: 'MORNING',
+      shiftName: 'الوردية الصباحية',
+      schedStart: start.slice(0, 5),
+      schedEnd: end.slice(0, 5),
+    };
+  }
+
+  const arrivalMinutes = parseTimeToMinutes(arrivalTimeStr);
+  const cutoffMinutes = parseTimeToMinutes('16:29'); // 4:29 PM threshold
+
+  // If entry time is entered after 4:29 PM (16:30 or later): EVENING SHIFT (4:30 PM to 1:00 AM)
+  if (arrivalMinutes > cutoffMinutes) {
+    const eveningStart = settings?.eveningShiftStartTime || '16:30';
+    const eveningEnd = settings?.eveningShiftEndTime || '01:00';
+    return {
+      shiftCode: 'EVENING',
+      shiftName: 'الوردية المسائية',
+      schedStart: eveningStart.slice(0, 5),
+      schedEnd: eveningEnd.slice(0, 5),
+    };
+  }
+
+  // Entry time is at or before 4:29 PM: MORNING SHIFT (8:00 AM to 4:30 PM)
+  const morningStart = empOverrideStart || settings?.morningShiftStartTime || '08:00';
+  const morningEnd = empOverrideEnd || settings?.morningShiftEndTime || '16:30';
+
+  return {
+    shiftCode: 'MORNING',
+    shiftName: 'الوردية الصباحية',
+    schedStart: morningStart.slice(0, 5),
+    schedEnd: morningEnd.slice(0, 5),
+  };
+}
+
 export function calculateShift(
   clockIn: Date | null,
   clockOut: Date | null,
@@ -201,23 +252,25 @@ export async function markPresent(
   if (!emp) throw new Error('الموظف غير موجود');
 
   const settings = await getSystemSettings();
-  const schedStart = emp.workStartTime || settings?.defaultWorkStartTime || '08:00:00';
-  const schedEnd = emp.workEndTime || settings?.defaultWorkEndTime || '17:00:00';
+  let arrivalTimeStr = actualArrivalTime || (emp.workStartTime ? emp.workStartTime.slice(0, 5) : (settings?.defaultWorkStartTime ? settings.defaultWorkStartTime.slice(0, 5) : '08:00'));
+
+  const shift = detectShift(arrivalTimeStr, emp.workStartTime, emp.workEndTime, settings);
+  const schedStart = shift.schedStart;
+  const schedEnd = shift.schedEnd;
   const breakMins = emp.breakMinutes ?? (settings?.defaultBreakMinutes ?? 60);
 
   const schedStartMinutes = parseTimeToMinutes(schedStart);
-  let arrivalTimeStr = actualArrivalTime || schedStart.slice(0, 5);
   const actualArrivalMinutes = parseTimeToMinutes(arrivalTimeStr);
 
-  // Exact minute calculation (never rounded)
+  // Exact minute calculation (never rounded) relative to detected shift start
   const lateMinutes = Math.max(0, actualArrivalMinutes - schedStartMinutes);
 
-  const schedEndMinutes = parseTimeToMinutes(schedEnd);
-  // Initial clockIn and clockOut
+  const schedEndMinutes = parseTimeToMinutes(schedEnd === '00:00' ? '24:00' : schedEnd);
   const clockInDate = new Date(`${workDate}T${arrivalTimeStr.padStart(5, '0')}:00Z`);
   const clockOutDate = new Date(`${workDate}T${schedEnd.slice(0, 5)}:00Z`);
 
-  const durationMinutes = Math.max(0, schedEndMinutes - actualArrivalMinutes);
+  let durationMinutes = schedEndMinutes - actualArrivalMinutes;
+  if (durationMinutes < 0) durationMinutes += 24 * 60;
   const workedMinutes = Math.max(0, durationMinutes - breakMins);
 
   const [existing] = await db.select().from(schema.attendance).where(
@@ -226,6 +279,10 @@ export async function markPresent(
       eq(schema.attendance.workDate, workDate)
     )
   );
+
+  const notesText = lateMinutes > 0
+    ? `[${shift.shiftName}] تأخير ${lateMinutes} دقيقة عن موعد الحضور (${schedStart})`
+    : `[${shift.shiftName}] حضور في الموعد (${schedStart})`;
 
   let result;
   if (existing) {
@@ -239,7 +296,7 @@ export async function markPresent(
         lateMinutes,
         attendanceType: 'PRESENT',
         unpaidDays: '0.00',
-        notes: lateMinutes > 0 ? `تأخير ${lateMinutes} دقيقة عن موعد الحضور (${schedStart.slice(0, 5)})` : null,
+        notes: notesText,
         updatedBy: actor.id,
         updatedAt: new Date(),
       })
@@ -263,7 +320,7 @@ export async function markPresent(
         unpaidDays: '0.00',
         approvedOtHours: '0.00',
         status: 'DRAFT',
-        notes: lateMinutes > 0 ? `تأخير ${lateMinutes} دقيقة عن موعد الحضور (${schedStart.slice(0, 5)})` : null,
+        notes: notesText,
         createdBy: actor.id,
         updatedBy: actor.id,
       })
@@ -406,11 +463,26 @@ export async function recordEarlyDeparture(
 
   const [emp] = await db.select().from(schema.employees).where(eq(schema.employees.id, record.employeeId));
   const settings = await getSystemSettings();
-  const schedEnd = emp?.workEndTime || settings?.defaultWorkEndTime || '17:00:00';
+
+  let clockInTimeStr = '08:00';
+  if (record.clockIn) {
+    const h = String(record.clockIn.getUTCHours()).padStart(2, '0');
+    const m = String(record.clockIn.getUTCMinutes()).padStart(2, '0');
+    clockInTimeStr = `${h}:${m}`;
+  }
+
+  const shift = detectShift(clockInTimeStr, emp?.workStartTime, emp?.workEndTime, settings);
+  const schedEnd = shift.schedEnd;
   const breakMins = record.breakMinutes ?? (emp?.breakMinutes ?? (settings?.defaultBreakMinutes ?? 60));
 
-  const schedEndMinutes = parseTimeToMinutes(schedEnd);
-  const actualOutMinutes = parseTimeToMinutes(clockOutTimeStr);
+  function parseEndTimeToMinutes(timeStr: string): number {
+    const mins = parseTimeToMinutes(timeStr);
+    if (mins <= 360) return mins + 1440; // Overnight shift past midnight
+    return mins;
+  }
+
+  const schedEndMinutes = parseEndTimeToMinutes(schedEnd);
+  const actualOutMinutes = parseEndTimeToMinutes(clockOutTimeStr);
 
   // Exact early departure minutes: max(0, ScheduledEndTime - ClockOutTime)
   const earlyDepartureMinutes = Math.max(0, schedEndMinutes - actualOutMinutes);

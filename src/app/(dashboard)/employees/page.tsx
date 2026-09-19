@@ -1,11 +1,12 @@
 import React from 'react';
 import { getCurrentUser } from '@/lib/auth/session';
 import { redirect } from 'next/navigation';
-import { getEmployees, createEmployee } from '@/lib/services/employee-service';
+import { getEmployees, createEmployee, updateEmployee } from '@/lib/services/employee-service';
 import { Badge } from '@/components/ui';
 import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { CreateEmployeeModal } from '@/components/employee/CreateEmployeeModal';
+import { EmployeeTableActions } from '@/components/employee/EmployeeTableActions';
 
 export default async function EmployeesPage({
   searchParams,
@@ -88,6 +89,42 @@ export default async function EmployeesPage({
     });
 
     revalidatePath('/employees');
+  }
+
+  async function handleUpdateEmployee(formData: FormData) {
+    'use server';
+    const currentUser = await getCurrentUser();
+    if (!currentUser) throw new Error('غير مصرح');
+
+    const empId = formData.get('employeeId') as string;
+    if (!empId) throw new Error('رقم الموظف مفقود');
+
+    const empType = (formData.get('employmentType') as 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER') || 'PERMANENT';
+    const ssRegistered = formData.get('socialSecurityRegistered') === 'true';
+    const ssDate = formData.get('socialSecurityRegistrationDate') as string;
+    const dailyRateRaw = formData.get('dailyRate') as string;
+    const minDeductionRaw = formData.get('minuteDeductionRate') as string;
+    const breakMinsRaw = formData.get('breakMinutes') as string;
+
+    await updateEmployee(currentUser, empId, {
+      name: formData.get('name') as string,
+      department: formData.get('department') as string,
+      jobTitle: formData.get('jobTitle') as string,
+      phone: (formData.get('phone') as string) || undefined,
+      startDate: formData.get('startDate') as string,
+      endDate: (formData.get('endDate') as string) || null,
+      employmentType: empType,
+      socialSecurityRegistered: ssRegistered,
+      socialSecurityRegistrationDate: ssRegistered ? (ssDate || null) : null,
+      dailyRate: dailyRateRaw ? parseFloat(dailyRateRaw) : null,
+      minuteDeductionRate: minDeductionRaw ? parseFloat(minDeductionRaw) : null,
+      workStartTime: (formData.get('workStartTime') as string) || null,
+      workEndTime: (formData.get('workEndTime') as string) || null,
+      breakMinutes: breakMinsRaw ? parseInt(breakMinsRaw, 10) : null,
+    });
+
+    revalidatePath('/employees');
+    revalidatePath(`/employees/${empId}`);
   }
 
   const isArchivedView = resolvedSearchParams.status === 'TERMINATED';
@@ -222,7 +259,7 @@ export default async function EmployeesPage({
               <th className="w-24">تاريخ المباشرة</th>
               {isArchivedView && <th className="w-24">نهاية الخدمة</th>}
               <th className="w-20">الحالة</th>
-              <th className="w-24 text-center">الإجراءات</th>
+              <th className="w-32 text-center whitespace-nowrap">الإجراءات</th>
             </tr>
           </thead>
           <tbody>
@@ -282,13 +319,12 @@ export default async function EmployeesPage({
                       {emp.status === 'ACTIVE' ? 'نشط' : 'أرشيف'}
                     </Badge>
                   </td>
-                  <td className="text-center">
-                    <Link
-                      href={`/employees/${emp.id}`}
-                      className="win-btn text-[11px] px-2 py-0.5 font-bold text-[#0A246A]"
-                    >
-                      فتح الملف
-                    </Link>
+                  <td className="text-center whitespace-nowrap">
+                    <EmployeeTableActions
+                      employee={emp}
+                      userRole={user.role}
+                      updateEmployeeAction={handleUpdateEmployee}
+                    />
                   </td>
                 </tr>
               ))

@@ -175,6 +175,39 @@ export default async function EmployeeDetailPage({
     revalidatePath(`/employees/${employeeId}`);
   }
 
+  async function handleUpdateEmployee(formData: FormData) {
+    'use server';
+    const currentUser = await getCurrentUser();
+    if (!currentUser) throw new Error('غير مصرح');
+
+    const empType = (formData.get('employmentType') as 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER') || 'PERMANENT';
+    const ssRegistered = formData.get('socialSecurityRegistered') === 'true';
+    const ssDate = formData.get('socialSecurityRegistrationDate') as string;
+    const dailyRateRaw = formData.get('dailyRate') as string;
+    const minDeductionRaw = formData.get('minuteDeductionRate') as string;
+    const breakMinsRaw = formData.get('breakMinutes') as string;
+
+    await updateEmployee(currentUser, employeeId, {
+      name: formData.get('name') as string,
+      department: formData.get('department') as string,
+      jobTitle: formData.get('jobTitle') as string,
+      phone: (formData.get('phone') as string) || undefined,
+      startDate: formData.get('startDate') as string,
+      endDate: (formData.get('endDate') as string) || null,
+      employmentType: empType,
+      socialSecurityRegistered: ssRegistered,
+      socialSecurityRegistrationDate: ssRegistered ? (ssDate || null) : null,
+      dailyRate: dailyRateRaw ? parseFloat(dailyRateRaw) : null,
+      minuteDeductionRate: minDeductionRaw ? parseFloat(minDeductionRaw) : null,
+      workStartTime: (formData.get('workStartTime') as string) || null,
+      workEndTime: (formData.get('workEndTime') as string) || null,
+      breakMinutes: breakMinsRaw ? parseInt(breakMinsRaw, 10) : null,
+    });
+
+    revalidatePath('/employees');
+    revalidatePath(`/employees/${employeeId}`);
+  }
+
   return (
     <div className="space-y-2">
       {/* Titlebar in Windows 2000 style */}
@@ -219,6 +252,7 @@ export default async function EmployeeDetailPage({
         updateSocialSecurityAction={handleUpdateSocialSecurity}
         uploadIdentityImageAction={handleUploadIdentityImage}
         updateScheduleAction={handleUpdateSchedule}
+        updateEmployeeAction={handleUpdateEmployee}
         updateStatusAction={handleUpdateStatus}
         toggleContractSignedAction={handleToggleContractSigned}
       />

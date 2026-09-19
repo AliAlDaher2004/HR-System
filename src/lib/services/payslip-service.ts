@@ -14,12 +14,19 @@ export interface PayslipData {
   jobTitle: string;
   periodStart: string;
   periodEnd: string;
+  workedDays: number;
+  socialSecurityRate: string;
+  insuranceNo: string;
+  nationalId: string;
   basicEarned: string;
   allowancesEarned: string;
+  deliveryAllowance: string;
+  tipsGratuities: string;
   otHours: string;
   otRate: string;
   otTotal: string;
   otherAdditions: string;
+  socialSecurityDeduction: string;
   unpaidDays: string;
   unpaidDayRate: string;
   unpaidDeduction: string;
@@ -49,6 +56,8 @@ export async function getPayslipData(actor: UserSession, payrollId: string): Pro
     currency: schema.payroll.currency,
     basicEarned: schema.payroll.basicEarned,
     allowancesEarned: schema.payroll.allowancesEarned,
+    gratuities: schema.payroll.gratuities,
+    workedDays: schema.payroll.workedDays,
     otHours: schema.payroll.otHours,
     otRate: schema.payroll.otRate,
     unpaidDays: schema.payroll.unpaidDays,
@@ -82,24 +91,31 @@ export async function getPayslipData(actor: UserSession, payrollId: string): Pro
   }
 
   const calc = computeNetPayroll({
+    employmentType: employee?.employmentType || 'PERMANENT',
     basicEarned: parseFloat(record.basicEarned),
     allowancesEarned: parseFloat(record.allowancesEarned),
+    gratuities: parseFloat(record.gratuities || '0'),
     otHours: parseFloat(record.otHours),
     otRate: parseFloat(record.otRate),
     otherAdditions: parseFloat(record.otherAdditions),
     unpaidDays: parseFloat(record.unpaidDays),
     unpaidDayRate: parseFloat(record.unpaidDayRate),
+    socialSecurityRegistered: employee?.socialSecurityRegistered,
     lateDeduction: parseFloat(record.lateDeduction || '0'),
     earlyDepartureDeduction: parseFloat(record.earlyDepartureDeduction || '0'),
     otherDeductions: parseFloat(record.otherDeductions),
     loanDeduction: parseFloat(record.loanDeduction),
   });
 
-  const totalEarnings = calc.basicEarned + calc.allowancesEarned + calc.otTotal + calc.otherAdditions;
-  const totalDeductions = calc.unpaidDeduction + calc.lateDeduction + calc.earlyDepartureDeduction + calc.otherDeductions + calc.loanDeduction;
+  const isSocialSecurity = employee?.socialSecurityRegistered || false;
+  const ssRateNum = isSocialSecurity ? 7.5 : 0;
+  const socialSecurityDeductionVal = isSocialSecurity ? Math.round(calc.basicEarned * 0.075 * 100) / 100 : 0;
+
+  const totalEarnings = calc.basicEarned + calc.allowancesEarned + calc.gratuities + calc.otTotal + calc.otherAdditions;
+  const totalDeductions = calc.unpaidDeduction + calc.lateDeduction + calc.earlyDepartureDeduction + calc.otherDeductions + calc.loanDeduction + socialSecurityDeductionVal;
 
   return {
-    companyName: settings?.companyName || 'شركة الحلول السحابية المتقدمة',
+    companyName: settings?.companyName || 'شركة الخطوط الأذكى لصناعة المنظفات',
     country: settings?.country || 'المملكة الأردنية الهاشمية',
     currency: record.currency,
     employeeNo: employee?.employeeNo || 'N/A',
@@ -108,12 +124,19 @@ export async function getPayslipData(actor: UserSession, payrollId: string): Pro
     jobTitle: employee?.jobTitle || 'N/A',
     periodStart: record.periodStart,
     periodEnd: record.periodEnd,
+    workedDays: record.workedDays || 30,
+    socialSecurityRate: `${ssRateNum.toFixed(2)}%`,
+    insuranceNo: employee?.phone || '0',
+    nationalId: '0',
     basicEarned: calc.basicEarned.toFixed(3),
     allowancesEarned: calc.allowancesEarned.toFixed(3),
+    deliveryAllowance: '0.000',
+    tipsGratuities: calc.gratuities.toFixed(3),
     otHours: calc.otHours.toFixed(2),
     otRate: calc.otRate.toFixed(3),
     otTotal: calc.otTotal.toFixed(3),
     otherAdditions: calc.otherAdditions.toFixed(3),
+    socialSecurityDeduction: socialSecurityDeductionVal.toFixed(3),
     unpaidDays: calc.unpaidDays.toFixed(2),
     unpaidDayRate: calc.unpaidDayRate.toFixed(3),
     unpaidDeduction: calc.unpaidDeduction.toFixed(3),
@@ -123,7 +146,7 @@ export async function getPayslipData(actor: UserSession, payrollId: string): Pro
     loanDeduction: calc.loanDeduction.toFixed(3),
     totalEarnings: totalEarnings.toFixed(3),
     totalDeductions: totalDeductions.toFixed(3),
-    netPay: record.netPay ? parseFloat(record.netPay).toFixed(3) : calc.netPreview.toFixed(3),
+    netPay: record.netPay ? parseFloat(record.netPay).toFixed(3) : (totalEarnings - totalDeductions).toFixed(3),
     status: record.status,
     approvedBy: approverName,
     approvedAt: record.approvedAt ? record.approvedAt.toISOString().slice(0, 10) : null,
@@ -161,11 +184,14 @@ export async function getBatchPayslipData(
       department: schema.employees.department,
       jobTitle: schema.employees.jobTitle,
       employmentType: schema.employees.employmentType,
+      socialSecurityRegistered: schema.employees.socialSecurityRegistered,
+      phone: schema.employees.phone,
       periodStart: schema.payroll.periodStart,
       periodEnd: schema.payroll.periodEnd,
       currency: schema.payroll.currency,
       basicEarned: schema.payroll.basicEarned,
       allowancesEarned: schema.payroll.allowancesEarned,
+      gratuities: schema.payroll.gratuities,
       workedDays: schema.payroll.workedDays,
       dailyRate: schema.payroll.dailyRate,
       otHours: schema.payroll.otHours,
@@ -198,12 +224,14 @@ export async function getBatchPayslipData(
 
   return records.map((record: any) => {
     const isDailyWorker = record.employmentType === 'DAILY_WORKER';
-    const workedDays = record.workedDays || 0;
+    const workedDays = record.workedDays || 30;
     const dailyRate = parseFloat(record.dailyRate || '0');
     const basicEarned = isDailyWorker ? Math.round(workedDays * dailyRate * 1000) / 1000 : parseFloat(record.basicEarned || '0');
     const allowancesEarned = parseFloat(record.allowancesEarned || '0');
+    const gratuities = parseFloat(record.gratuities || '0');
     const otHours = parseFloat(record.otHours || '0');
-    const otRate = parseFloat(record.otRate || '0');
+    const calculatedOtRate = basicEarned > 0 ? ((basicEarned / 26) / 9) * 2 : 0;
+    const otRate = parseFloat(record.otRate || '0') > 0 && parseFloat(record.otRate || '0') !== 2.5 ? parseFloat(record.otRate || '0') : calculatedOtRate;
     const otTotal = Math.round(otHours * otRate * 1000) / 1000;
     const otherAdditions = parseFloat(record.otherAdditions || '0');
     const unpaidDays = parseFloat(record.unpaidDays || '0');
@@ -214,8 +242,12 @@ export async function getBatchPayslipData(
     const otherDeductions = parseFloat(record.otherDeductions || '0');
     const loanDeduction = parseFloat(record.loanDeduction || '0');
 
-    const totalEarnings = basicEarned + allowancesEarned + otTotal + otherAdditions;
-    const totalDeductions = unpaidDeduction + lateDeduction + earlyDepartureDeduction + otherDeductions + loanDeduction;
+    const isSocialSecurity = record.socialSecurityRegistered || false;
+    const ssRateNum = isSocialSecurity ? 7.5 : 0;
+    const socialSecurityDeductionVal = isSocialSecurity ? Math.round(basicEarned * 0.075 * 1000) / 1000 : 0;
+
+    const totalEarnings = basicEarned + allowancesEarned + gratuities + otTotal + otherAdditions;
+    const totalDeductions = unpaidDeduction + lateDeduction + earlyDepartureDeduction + otherDeductions + loanDeduction + socialSecurityDeductionVal;
 
     const netPayVal = record.netPay
       ? parseFloat(record.netPay)
@@ -224,7 +256,7 @@ export async function getBatchPayslipData(
     const approverName = record.approvedBy ? userMap.get(record.approvedBy) || 'مدير النظام' : 'مدير النظام';
 
     return {
-      companyName: settings?.companyName || 'شركة التقنية والحلول المتقدمة',
+      companyName: settings?.companyName || 'شركة الخطوط الأذكى لصناعة المنظفات',
       country: settings?.country || 'المملكة الأردنية الهاشمية',
       currency: record.currency || 'JOD',
       employeeNo: record.employeeNo || 'N/A',
@@ -233,12 +265,19 @@ export async function getBatchPayslipData(
       jobTitle: record.jobTitle || 'N/A',
       periodStart: record.periodStart,
       periodEnd: record.periodEnd,
+      workedDays: workedDays,
+      socialSecurityRate: `${ssRateNum.toFixed(2)}%`,
+      insuranceNo: record.phone || '0',
+      nationalId: '0',
       basicEarned: basicEarned.toFixed(3),
       allowancesEarned: allowancesEarned.toFixed(3),
+      deliveryAllowance: '0.000',
+      tipsGratuities: gratuities.toFixed(3),
       otHours: otHours.toFixed(2),
       otRate: otRate.toFixed(3),
       otTotal: otTotal.toFixed(3),
       otherAdditions: otherAdditions.toFixed(3),
+      socialSecurityDeduction: socialSecurityDeductionVal.toFixed(3),
       unpaidDays: unpaidDays.toFixed(2),
       unpaidDayRate: unpaidDayRate.toFixed(3),
       unpaidDeduction: unpaidDeduction.toFixed(3),

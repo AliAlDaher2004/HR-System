@@ -6,6 +6,7 @@ import { eq, and, ne, gte, lte } from 'drizzle-orm';
 import { RBAC } from '@/lib/auth/rbac';
 import Link from 'next/link';
 import { getSystemSettings } from '@/lib/services/settings-service';
+import { getEmployeesDueForContractSigning } from '@/lib/services/employee-service';
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
@@ -23,6 +24,7 @@ export default async function DashboardPage() {
     pendingLeaves,
     monthlyPayrolls,
     settings,
+    probationEndingEmployees,
   ] = await Promise.all([
     db.select().from(schema.employees).where(eq(schema.employees.status, 'ACTIVE')),
     db.select().from(schema.attendance).where(eq(schema.attendance.workDate, todayStr)),
@@ -39,10 +41,12 @@ export default async function DashboardPage() {
         )
       : Promise.resolve([]),
     getSystemSettings().catch(() => ({ currency: 'JOD' })),
+    getEmployeesDueForContractSigning(user).catch(() => []),
   ]);
 
   // 1. Employee statistics
   const permanentCount = activeEmployees.filter((e: any) => e.employmentType === 'PERMANENT').length;
+  const probationaryCount = activeEmployees.filter((e: any) => e.employmentType === 'PROBATIONARY').length;
   const dailyWorkerCount = activeEmployees.filter((e: any) => e.employmentType === 'DAILY_WORKER').length;
   const unregisteredSSCount = activeEmployees.filter((e: any) => !e.socialSecurityRegistered).length;
 
@@ -96,6 +100,54 @@ export default async function DashboardPage() {
           <Link href="/settings" className="win-btn text-[11px] px-2 py-0.5 font-bold text-amber-900">
             تأكيد السياسة الآن
           </Link>
+        </div>
+      )}
+
+      {/* Probation End Notification Banner */}
+      {probationEndingEmployees.length > 0 && (
+        <div className="win-sunken p-2.5 bg-blue-50 border border-blue-500 text-blue-950 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 font-bold text-sm text-blue-900">
+              <span>📜</span>
+              <span>إشعار العقود: موظفون انتهت فترة تجربتهم (3 أشهر) ومستحقون لتوقيع العقود الدائمة ({probationEndingEmployees.length})</span>
+            </div>
+            <Link href="/employees" className="win-btn text-xs font-bold px-2.5 py-1 text-blue-900">
+              إدارة الموظفين وتوقيع العقود
+            </Link>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-right border-collapse bg-white border border-[#808080]">
+              <thead>
+                <tr className="bg-[#ECE9D8] font-bold border-b border-[#808080]">
+                  <th className="p-1.5 border-r border-[#808080]">الرقم الوظيفي</th>
+                  <th className="p-1.5 border-r border-[#808080]">اسم الموظف</th>
+                  <th className="p-1.5 border-r border-[#808080]">القسم</th>
+                  <th className="p-1.5 border-r border-[#808080]">تاريخ المباشرة</th>
+                  <th className="p-1.5 border-r border-[#808080]">تاريخ انتهاء 3 أشهر</th>
+                  <th className="p-1.5">الحالة والإجراء</th>
+                </tr>
+              </thead>
+              <tbody>
+                {probationEndingEmployees.map((emp: any) => (
+                  <tr key={emp.id} className="border-b border-slate-200 hover:bg-blue-50">
+                    <td className="p-1.5 font-mono font-bold border-r border-slate-200">{emp.employeeNo}</td>
+                    <td className="p-1.5 font-bold border-r border-slate-200">{emp.name}</td>
+                    <td className="p-1.5 border-r border-slate-200">{emp.department}</td>
+                    <td className="p-1.5 font-mono border-r border-slate-200">{emp.startDate}</td>
+                    <td className="p-1.5 font-mono font-bold text-rose-700 border-r border-slate-200">{emp.probationEndDate}</td>
+                    <td className="p-1.5 flex items-center gap-2">
+                      <span className="bg-amber-100 text-amber-900 px-1.5 py-0.5 font-bold rounded border border-amber-300">
+                        انتهت التجربة منذ {emp.daysPassedSinceProbationEnd} يوم
+                      </span>
+                      <Link href={`/employees?employeeId=${emp.id}`} className="win-btn text-[11px] font-bold px-2 py-0.5 text-emerald-800">
+                        تثبيت الموظف وتوقيع العقد
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

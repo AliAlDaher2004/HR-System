@@ -388,9 +388,9 @@ export function DailyAttendanceSheetClient({
               <th className="w-24">القسم</th>
               <th className="w-24">الدوام المجدول</th>
               <th className="w-40">حالة الحضور والغياب</th>
-              <th className="w-24">ساعات العمل</th>
-              <th className="w-64 text-center">تسجيل الحضور والغياب السريع</th>
-              <th className="w-24 text-center">المغادرة</th>
+              <th className="w-24 font-bold">ساعات العمل</th>
+              <th className="text-center whitespace-nowrap min-w-[340px]">تسجيل الحضور والغياب السريع</th>
+              <th className="w-24 text-center whitespace-nowrap">المغادرة</th>
             </tr>
           </thead>
           <tbody>
@@ -466,26 +466,26 @@ export function DailyAttendanceSheetClient({
                     <td className="font-mono text-[11px]">
                       {row.workedMinutes > 0 ? formatDurationArabic(row.workedMinutes) : '-'}
                     </td>
-                    <td className="text-center">
+                    <td className="text-center whitespace-nowrap">
                       {isLocked ? (
                         <span className="text-[10px] text-slate-500 font-semibold" title="الدوام مقفل لاعتماد مسير الرواتب">
                           🔒 مقفل
                         </span>
                       ) : (
-                        <div className="inline-flex items-center gap-1 justify-center flex-wrap">
+                        <div className="inline-flex items-center gap-1 justify-center whitespace-nowrap">
                           {/* Green: حضور */}
                           <button
                             type="button"
                             disabled={isPending}
                             onClick={() => onMarkPresent(emp.id)}
-                            className={`win-btn text-[10px] px-1.5 py-0.5 font-bold ${
+                            className={`win-btn text-[10px] px-1.5 py-0.5 font-bold whitespace-nowrap ${
                               row.attendanceType === 'PRESENT' && row.lateMinutes === 0
                                 ? 'bg-emerald-200 text-emerald-950 ring-1 ring-emerald-600'
                                 : 'text-emerald-800'
                             }`}
                             title="حضور في موعد الدوام المحدد (0 تأخير)"
                           >
-                            حضور
+                            ✓ حضور
                           </button>
 
                           {/* Yellow/Orange: تأخير */}
@@ -502,14 +502,14 @@ export function DailyAttendanceSheetClient({
                                 arrivalTime: defaultArrival > row.scheduledIn.slice(0, 5) ? defaultArrival : '08:30',
                               });
                             }}
-                            className={`win-btn text-[10px] px-1.5 py-0.5 font-bold ${
+                            className={`win-btn text-[10px] px-1.5 py-0.5 font-bold whitespace-nowrap ${
                               row.attendanceType === 'PRESENT' && row.lateMinutes > 0
                                 ? 'bg-amber-200 text-amber-950 ring-1 ring-amber-600'
                                 : 'text-amber-800'
                             }`}
                             title="تسجيل وقت الحضور الفعلي واحتساب دقائق التأخير"
                           >
-                            تأخير
+                            ⏰ تأخير
                           </button>
 
                           {/* Indigo: غياب بعذر */}
@@ -524,14 +524,14 @@ export function DailyAttendanceSheetClient({
                                 reason: 'ظرف صحي / طبي',
                               });
                             }}
-                            className={`win-btn text-[10px] px-1.5 py-0.5 font-bold ${
+                            className={`win-btn text-[10px] px-1.5 py-0.5 font-bold whitespace-nowrap ${
                               row.attendanceType === 'EXCUSED_ABSENCE'
                                 ? 'bg-indigo-200 text-indigo-950 ring-1 ring-indigo-600'
                                 : 'text-indigo-800'
                             }`}
                             title="تسجيل غياب بعذر (خصم يوم واحد)"
                           >
-                            غياب بعذر
+                            📝 بعذر
                           </button>
 
                           {/* Red: غياب بدون عذر */}
@@ -539,14 +539,14 @@ export function DailyAttendanceSheetClient({
                             type="button"
                             disabled={isPending}
                             onClick={() => onMarkUnexcusedAbsent(emp.id)}
-                            className={`win-btn text-[10px] px-1.5 py-0.5 font-bold ${
+                            className={`win-btn text-[10px] px-1.5 py-0.5 font-bold whitespace-nowrap ${
                               row.attendanceType === 'UNEXCUSED_ABSENCE' || row.attendanceType === 'ABSENT'
                                 ? 'bg-rose-200 text-rose-950 ring-1 ring-rose-600'
                                 : 'text-rose-800'
                             }`}
                             title="تسجيل غياب بدون عذر (خصم يومين عقوبة)"
                           >
-                            غياب بدون عذر (خصم 2)
+                            ❌ بدون عذر (خصم 2)
                           </button>
 
                           {/* Purple: عمل إضافي */}
@@ -561,14 +561,14 @@ export function DailyAttendanceSheetClient({
                                 otHours: Number(att?.approvedOtHours) || 1.5,
                               });
                             }}
-                            className={`win-btn text-[10px] px-1.5 py-0.5 font-bold ${
+                            className={`win-btn text-[10px] px-1.5 py-0.5 font-bold whitespace-nowrap ${
                               att && Number(att.approvedOtHours) > 0
                                 ? 'bg-purple-200 text-purple-950 ring-1 ring-purple-600'
                                 : 'text-purple-900'
                             }`}
                             title="تسجيل أو تعديل ساعات العمل الإضافي المعتمدة للموظف"
                           >
-                            {att && Number(att.approvedOtHours) > 0 ? `إضافي (${att.approvedOtHours} س)` : '+ إضافي'}
+                            {att && Number(att.approvedOtHours) > 0 ? `⚡ إضافي (${att.approvedOtHours}س)` : '⚡ +إضافي'}
                           </button>
                         </div>
                       )}

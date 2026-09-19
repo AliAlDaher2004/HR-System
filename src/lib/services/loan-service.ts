@@ -3,6 +3,7 @@ import { eq, and, sql, desc } from 'drizzle-orm';
 import { UserSession, RBAC, AuthorizationError, requireRole } from '../auth/rbac';
 import { logAuditEvent } from '../auth/audit';
 import { getSystemSettings } from './settings-service';
+import { syncEmployeeLoanRepaymentsForPayroll } from './payroll-service';
 
 export async function getLoans(actor: UserSession, employeeId?: string) {
   if (!RBAC.canManageLoans(actor.role)) {
@@ -163,6 +164,21 @@ export async function disburseLoan(actor: UserSession, loanId: string) {
     .set({ status: 'DISBURSED' })
     .where(eq(schema.loans.id, loanId))
     .returning();
+
+  // Find any active DRAFT payrolls for this employee and sync loan repayments
+  const draftPayrolls = await db.select().from(schema.payroll).where(
+    and(
+      eq(schema.payroll.employeeId, loan.employeeId),
+      eq(schema.payroll.status, 'DRAFT')
+    )
+  );
+
+  for (const draft of draftPayrolls) {
+    const totalLoanDed = await syncEmployeeLoanRepaymentsForPayroll(db, loan.employeeId, draft.id, draft.periodEnd, actor.id);
+    await db.update(schema.payroll)
+      .set({ loanDeduction: totalLoanDed.toFixed(3) })
+      .where(eq(schema.payroll.id, draft.id));
+  }
 
   await logAuditEvent({
     actor,

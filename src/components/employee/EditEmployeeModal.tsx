@@ -2,34 +2,84 @@
 
 import React, { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
-import { Plus } from 'lucide-react';
 
-interface CreateEmployeeModalProps {
-  createEmployeeAction: (formData: FormData) => Promise<void>;
+interface EditEmployeeModalProps {
+  employee: any;
+  updateEmployeeAction: (formData: FormData) => Promise<void>;
+  buttonText?: string;
+  buttonClassName?: string;
 }
 
-export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModalProps) {
+export function EditEmployeeModal({
+  employee,
+  updateEmployeeAction,
+  buttonText = '✏️ تعديل البيانات',
+  buttonClassName = 'win-btn text-xs font-bold px-2.5 py-1 flex items-center gap-1.5 text-[#0A246A]',
+}: EditEmployeeModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Dynamic form state
-  const [employmentType, setEmploymentType] = useState<'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER'>('PERMANENT');
-  const [startDate, setStartDate] = useState<string>(new Date().toISOString().slice(0, 10));
-  const [ssRegistered, setSsRegistered] = useState<boolean>(false);
-  const [ssDate, setSsDate] = useState<string>('');
-  const [contractSigned, setContractSigned] = useState<boolean>(true);
-  const [contractSignedDate, setContractSignedDate] = useState<string>('');
+  // Form states pre-filled with current employee data
+  const [name, setName] = useState<string>(employee.name || '');
+  const [department, setDepartment] = useState<string>(employee.department || '');
+  const [jobTitle, setJobTitle] = useState<string>(employee.jobTitle || '');
+  const [phone, setPhone] = useState<string>(employee.phone || '');
+  const [employmentType, setEmploymentType] = useState<'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER'>(
+    employee.employmentType || 'PERMANENT'
+  );
+  const [startDate, setStartDate] = useState<string>(employee.startDate || '');
+  const [endDate, setEndDate] = useState<string>(employee.endDate || '');
+  const [ssRegistered, setSsRegistered] = useState<boolean>(Boolean(employee.socialSecurityRegistered));
+  const [ssDate, setSsDate] = useState<string>(employee.socialSecurityRegistrationDate || '');
+  const [dailyRate, setDailyRate] = useState<string>(
+    employee.dailyRate ? String(employee.dailyRate) : ''
+  );
+  const [minuteDeductionRate, setMinuteDeductionRate] = useState<string>(
+    employee.minuteDeductionRate ? String(employee.minuteDeductionRate) : ''
+  );
+  const [workStartTime, setWorkStartTime] = useState<string>(employee.workStartTime || '08:00');
+  const [workEndTime, setWorkEndTime] = useState<string>(employee.workEndTime || '16:30');
+  const [breakMinutes, setBreakMinutes] = useState<string>(
+    employee.breakMinutes !== null && employee.breakMinutes !== undefined
+      ? String(employee.breakMinutes)
+      : '60'
+  );
 
   const probationEndDatePreview = React.useMemo(() => {
     if (!startDate) return '';
     const [y, m, d] = startDate.split('-').map(Number);
+    if (!y || !m || !d) return '';
     const date = new Date(y, m - 1 + 3, d);
     const ry = date.getFullYear();
     const rm = String(date.getMonth() + 1).padStart(2, '0');
     const rd = String(date.getDate()).padStart(2, '0');
     return `${ry}-${rm}-${rd}`;
   }, [startDate]);
+
+  const handleOpen = () => {
+    // Reset state to current employee props when modal opens
+    setName(employee.name || '');
+    setDepartment(employee.department || '');
+    setJobTitle(employee.jobTitle || '');
+    setPhone(employee.phone || '');
+    setEmploymentType(employee.employmentType || 'PERMANENT');
+    setStartDate(employee.startDate || '');
+    setEndDate(employee.endDate || '');
+    setSsRegistered(Boolean(employee.socialSecurityRegistered));
+    setSsDate(employee.socialSecurityRegistrationDate || '');
+    setDailyRate(employee.dailyRate ? String(employee.dailyRate) : '');
+    setMinuteDeductionRate(employee.minuteDeductionRate ? String(employee.minuteDeductionRate) : '');
+    setWorkStartTime(employee.workStartTime || '08:00');
+    setWorkEndTime(employee.workEndTime || '16:30');
+    setBreakMinutes(
+      employee.breakMinutes !== null && employee.breakMinutes !== undefined
+        ? String(employee.breakMinutes)
+        : '60'
+    );
+    setErrorMessage(null);
+    setIsOpen(true);
+  };
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -41,37 +91,45 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
         throw new Error('تاريخ التسجيل في الضمان الاجتماعي مطلوب عند اختيار (مسجل في الضمان)');
       }
 
-      const formData = new FormData(e.currentTarget);
-
-      if (employmentType === 'PERMANENT' || employmentType === 'PROBATIONARY') {
-        const basicRaw = formData.get('monthlyBasic');
-        if (!basicRaw || isNaN(Number(basicRaw)) || Number(basicRaw) <= 0) {
-          throw new Error('الراتب الأساسي الشهري مطلوب ويجب أن يكون أكبر من صفر');
+      if (employmentType === 'DAILY_WORKER') {
+        if (!dailyRate || isNaN(Number(dailyRate)) || Number(dailyRate) < 0) {
+          throw new Error('أجر اليوم مطلوب لعمال المياومة ويجب أن يكون صفر أو أكثر');
         }
       }
 
+      if (endDate && startDate && new Date(endDate) < new Date(startDate)) {
+        throw new Error('تاريخ نهاية الخدمة لا يمكن أن يكون قبل تاريخ بداية العمل');
+      }
+
+      const formData = new FormData(e.currentTarget);
+      formData.set('employeeId', employee.id);
+      formData.set('name', name);
+      formData.set('department', department);
+      formData.set('jobTitle', jobTitle);
+      formData.set('phone', phone);
+      formData.set('employmentType', employmentType);
+      formData.set('startDate', startDate);
+      formData.set('endDate', endDate || '');
       formData.set('socialSecurityRegistered', ssRegistered ? 'true' : 'false');
       if (ssRegistered && ssDate) {
         formData.set('socialSecurityRegistrationDate', ssDate);
       } else {
         formData.delete('socialSecurityRegistrationDate');
       }
-
-      formData.set('contractSigned', contractSigned ? 'true' : 'false');
-      if (contractSigned && contractSignedDate) {
-        formData.set('contractSignedDate', contractSignedDate);
+      if (employmentType === 'DAILY_WORKER') {
+        formData.set('dailyRate', dailyRate);
+      } else {
+        formData.delete('dailyRate');
       }
+      formData.set('minuteDeductionRate', minuteDeductionRate || '');
+      formData.set('workStartTime', workStartTime || '');
+      formData.set('workEndTime', workEndTime || '');
+      formData.set('breakMinutes', breakMinutes || '');
 
-      await createEmployeeAction(formData);
+      await updateEmployeeAction(formData);
       setIsOpen(false);
-      // Reset form
-      setEmploymentType('PERMANENT');
-      setSsRegistered(false);
-      setSsDate('');
-      setContractSigned(true);
-      setContractSignedDate('');
     } catch (err: any) {
-      setErrorMessage(err.message || 'حدث خطأ أثناء حفظ بيانات الموظف');
+      setErrorMessage(err.message || 'حدث خطأ أثناء تعديل بيانات الموظف');
     } finally {
       setIsSubmitting(false);
     }
@@ -79,22 +137,14 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => {
-          setErrorMessage(null);
-          setIsOpen(true);
-        }}
-        className="win-btn text-xs font-bold py-1 px-3 flex items-center gap-1.5 shadow-sm"
-      >
-        <span className="text-emerald-700 font-bold text-sm">+</span>
-        <span>إضافة موظف جديد</span>
+      <button type="button" onClick={handleOpen} className={buttonClassName}>
+        <span>{buttonText}</span>
       </button>
 
       <Modal
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
-        title="معالج إضافة موظف جديد إلى السجل العام"
+        title={`تعديل بيانات الموظف: ${employee.name} (${employee.employeeNo})`}
         maxWidth="lg"
       >
         {errorMessage && (
@@ -103,20 +153,17 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-3 text-xs select-none" dir="rtl">
           {/* Group 1: Basic Identity */}
           <fieldset className="border border-[#808080] p-2.5 bg-white">
             <legend className="px-1 text-black font-bold">البيانات الوظيفية والشخصية</legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
-                <label className="block font-bold text-black mb-0.5">
-                  الرقم الوظيفي <span className="text-rose-600">*</span>
-                </label>
+                <label className="block font-bold text-black mb-0.5">الرقم الوظيفي (غير قابل للتعديل)</label>
                 <input
-                  name="employeeNo"
-                  required
-                  placeholder="EMP-1009"
-                  className="win-input w-full py-1 px-2 font-mono font-bold"
+                  value={employee.employeeNo}
+                  disabled
+                  className="win-input w-full py-1 px-2 font-mono font-bold bg-[#E0DDD5] text-slate-700 cursor-not-allowed"
                 />
               </div>
 
@@ -127,6 +174,8 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
                 <input
                   name="name"
                   required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   placeholder="الاسم الثلاثي أو الرباعي"
                   className="win-input w-full py-1 px-2"
                 />
@@ -139,6 +188,8 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
                 <input
                   name="department"
                   required
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
                   placeholder="تقنية المعلومات / المالية..."
                   className="win-input w-full py-1 px-2"
                 />
@@ -151,6 +202,8 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
                 <input
                   name="jobTitle"
                   required
+                  value={jobTitle}
+                  onChange={(e) => setJobTitle(e.target.value)}
                   placeholder="مهندس برمجيات / محاسب..."
                   className="win-input w-full py-1 px-2"
                 />
@@ -161,6 +214,8 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
                 <input
                   name="phone"
                   type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   placeholder="+966500000000"
                   className="win-input w-full py-1 px-2 font-mono"
                 />
@@ -179,12 +234,23 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
                   className="win-input w-full py-1 px-2 font-mono font-bold"
                 />
               </div>
+
+              <div>
+                <label className="block font-bold text-black mb-0.5">تاريخ نهاية الخدمة (اختياري)</label>
+                <input
+                  name="endDate"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="win-input w-full py-1 px-2 font-mono"
+                />
+              </div>
             </div>
           </fieldset>
 
-          {/* Group 2: Employment Type (Permanent vs Probationary 3-Month vs Daily Worker) */}
+          {/* Group 2: Employment Type */}
           <fieldset className="border border-[#808080] p-2.5 bg-white">
-            <legend className="px-1 text-black font-bold">حالة الموظف ونوع التوظيف (تعيين دائم / عقد تجريبي 3 أشهر)</legend>
+            <legend className="px-1 text-black font-bold">نوع التوظيف والحالة</legend>
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-4 sm:gap-6">
                 <label className="flex items-center gap-1.5 cursor-pointer font-bold">
@@ -224,82 +290,15 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
               {employmentType === 'PROBATIONARY' && (
                 <div className="win-sunken p-2 bg-blue-50 border border-blue-400 text-blue-950 font-bold text-[11px] flex items-center justify-between">
                   <span>⏳ فترة التجربة: 3 أشهر من تاريخ المباشرة.</span>
-                  <span>تاريخ انتهاء التجربة المتوقع: <strong className="font-mono text-blue-900 text-xs">{probationEndDatePreview}</strong></span>
-                </div>
-              )}
-
-              {(employmentType === 'PERMANENT' || employmentType === 'PROBATIONARY') && (
-                <div className="win-sunken p-2.5 bg-[#F0F4F8] grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-1.5 border border-[#808080]">
-                  <div>
-                    <label className="block font-bold text-black mb-0.5">
-                      الراتب الأساسي الشهري <span className="text-rose-600">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      name="monthlyBasic"
-                      step="0.001"
-                      min="0.001"
-                      required={employmentType === 'PERMANENT' || employmentType === 'PROBATIONARY'}
-                      placeholder="مثال: 500.000"
-                      className="win-input w-full py-1.5 px-2 font-mono font-bold text-[#0A246A]"
-                    />
-                    <span className="text-[10px] text-slate-600 block mt-0.5">
-                      الراتب المعتمد لحساب البدلات والرواتب والعقود.
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-black mb-0.5">
-                      البدلات الشهرية (اختياري)
-                    </label>
-                    <input
-                      type="number"
-                      name="monthlyAllowances"
-                      step="0.001"
-                      min="0"
-                      placeholder="مثال: 50.000"
-                      className="win-input w-full py-1.5 px-2 font-mono"
-                    />
-                    <span className="text-[10px] text-slate-600 block mt-0.5">
-                      إجمالي البدلات المضافة للراتب الأساسي.
-                    </span>
-                  </div>
-
-                  <div className="col-span-1 sm:col-span-2 bg-white p-2.5 border border-slate-300 rounded space-y-2 mt-1">
-                    <div className="flex items-center justify-between">
-                      <label className="flex items-center gap-2 cursor-pointer font-bold text-black text-xs">
-                        <input
-                          type="checkbox"
-                          checked={contractSigned}
-                          onChange={(e) => setContractSigned(e.target.checked)}
-                          className="w-4 h-4 accent-emerald-600"
-                        />
-                        <span>هل تم توقيع العقد من قِبل الموظف؟</span>
-                      </label>
-                      <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${contractSigned ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-rose-100 text-rose-800 border border-rose-300'}`}>
-                        {contractSigned ? 'العقد موقع (ON)' : 'العقد غير موقع (OFF)'}
-                      </span>
-                    </div>
-
-                    {contractSigned && (
-                      <div>
-                        <label className="block font-bold text-slate-700 text-[11px] mb-0.5">
-                          تاريخ توقيع العقد (افتراضي تاريخ المباشرة إن ترك فارغاً)
-                        </label>
-                        <input
-                          type="date"
-                          value={contractSignedDate}
-                          onChange={(e) => setContractSignedDate(e.target.value)}
-                          className="win-input w-full py-1 px-2 font-mono text-xs"
-                        />
-                      </div>
-                    )}
-                  </div>
+                  <span>
+                    تاريخ انتهاء التجربة المتوقع:{' '}
+                    <strong className="font-mono text-blue-900 text-xs">{probationEndDatePreview}</strong>
+                  </span>
                 </div>
               )}
 
               {employmentType === 'DAILY_WORKER' && (
-                <div className="win-sunken p-2 bg-[#FFFFF0] grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                <div className="win-sunken p-2 bg-[#FFFFF0] grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1 border border-amber-300">
                   <div>
                     <label className="block font-bold text-black mb-0.5">
                       أجر اليوم (Daily Rate) <span className="text-rose-600">*</span>
@@ -310,45 +309,23 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
                       step="0.001"
                       min="0"
                       required={employmentType === 'DAILY_WORKER'}
+                      value={dailyRate}
+                      onChange={(e) => setDailyRate(e.target.value)}
                       placeholder="مثال: 150.000"
                       className="win-input w-full py-1 px-2 font-mono font-bold"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-bold text-black mb-0.5">
-                      سعر خصم الدقيقة (Minute Deduction Rate)
-                    </label>
+                    <label className="block font-bold text-black mb-0.5">سعر خصم الدقيقة (اختياري)</label>
                     <input
                       type="number"
                       name="minuteDeductionRate"
                       step="0.001"
                       min="0"
+                      value={minuteDeductionRate}
+                      onChange={(e) => setMinuteDeductionRate(e.target.value)}
                       placeholder="افتراضي النظام إن ترك فارغاً"
-                      className="win-input w-full py-1 px-2 font-mono"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-black mb-0.5">
-                      تاريخ بدء العمل المؤقت <span className="text-rose-600">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      name="temporaryStartDate"
-                      required={employmentType === 'DAILY_WORKER'}
-                      defaultValue={new Date().toISOString().slice(0, 10)}
-                      className="win-input w-full py-1 px-2 font-mono"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-black mb-0.5">
-                      تاريخ انتهاء العمل المؤقت (اختياري)
-                    </label>
-                    <input
-                      type="date"
-                      name="temporaryEndDate"
                       className="win-input w-full py-1 px-2 font-mono"
                     />
                   </div>
@@ -386,24 +363,22 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
                     onChange={(e) => setSsDate(e.target.value)}
                     className="win-input w-full py-1 px-2 font-mono font-bold"
                   />
-                  <span className="text-[10px] text-slate-500 block mt-0.5">
-                    إلزامي طالما أن الموظف مسجل في الضمان الاجتماعي.
-                  </span>
                 </div>
               )}
             </div>
           </fieldset>
 
-          {/* Group 4: Working Hours (Optional overrides) */}
+          {/* Group 4: Working Hours */}
           <fieldset className="border border-[#808080] p-2.5 bg-white">
-            <legend className="px-1 text-black font-bold">أوقات الدوام المخصصة (اختياري)</legend>
+            <legend className="px-1 text-black font-bold">أوقات الدوام المخصصة</legend>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
                 <label className="block text-black font-bold mb-0.5">وقت بدء الدوام</label>
                 <input
                   type="time"
                   name="workStartTime"
-                  defaultValue="08:00"
+                  value={workStartTime}
+                  onChange={(e) => setWorkStartTime(e.target.value)}
                   className="win-input w-full py-1 px-2 font-mono"
                 />
               </div>
@@ -413,7 +388,8 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
                 <input
                   type="time"
                   name="workEndTime"
-                  defaultValue="17:00"
+                  value={workEndTime}
+                  onChange={(e) => setWorkEndTime(e.target.value)}
                   className="win-input w-full py-1 px-2 font-mono"
                 />
               </div>
@@ -423,7 +399,8 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
                 <input
                   type="number"
                   name="breakMinutes"
-                  defaultValue="60"
+                  value={breakMinutes}
+                  onChange={(e) => setBreakMinutes(e.target.value)}
                   min="0"
                   className="win-input w-full py-1 px-2 font-mono"
                 />
@@ -445,7 +422,7 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
               disabled={isSubmitting}
               className="win-btn px-5 py-1 font-bold text-[#0A246A]"
             >
-              {isSubmitting ? 'جارٍ الحفظ...' : 'حفظ الموظف الجديد'}
+              {isSubmitting ? 'جارٍ الحفظ...' : 'حفظ التعديلات'}
             </button>
           </div>
         </form>

@@ -8,6 +8,7 @@ import {
   approvePayroll,
   confirmPayrollPayment,
   cancelPayrollDraft,
+  deletePayrollRun,
   validatePayrollCompleteness,
 } from '@/lib/services/payroll-service';
 import { Badge, Alert } from '@/components/ui';
@@ -16,6 +17,7 @@ import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { ConfirmPaymentModal } from '@/components/payroll/ConfirmPaymentModal';
 import { EditPayrollDraftModal } from '@/components/payroll/EditPayrollDraftModal';
+import { DeletePayrollModal } from '@/components/payroll/DeletePayrollModal';
 import { formatDurationArabic } from '@/lib/services/attendance-service';
 
 export default async function PayrollDetailPage({
@@ -90,6 +92,14 @@ export default async function PayrollDetailPage({
     if (!currentUser) throw new Error('غير مصرح');
     await cancelPayrollDraft(currentUser, payrollId);
     revalidatePath(`/payroll/${payrollId}`);
+  }
+
+  async function handleDeletePayrollRun() {
+    'use server';
+    const currentUser = await getCurrentUser();
+    if (!currentUser) throw new Error('غير مصرح');
+    await deletePayrollRun(currentUser, payrollId);
+    redirect('/payroll');
   }
 
   const isDraft = payroll.status === 'DRAFT';
@@ -212,6 +222,16 @@ export default async function PayrollDetailPage({
                 </button>
               </form>
             </>
+          )}
+
+          {['ADMIN', 'HR'].includes(user.role) && (
+            <DeletePayrollModal
+              payrollId={payrollId}
+              employeeName={payroll.employeeName}
+              monthPeriod={payroll.periodStart.slice(0, 7)}
+              deletePayrollAction={handleDeletePayrollRun}
+              buttonText="حذف كشف الراتب نهائياً"
+            />
           )}
 
           {isApproved && (

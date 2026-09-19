@@ -80,7 +80,9 @@ CREATE TABLE IF NOT EXISTS public.employees (
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'TERMINATED')),
     social_security_registered BOOLEAN NOT NULL DEFAULT FALSE,
     social_security_registration_date DATE,
-    employment_type VARCHAR(30) NOT NULL DEFAULT 'PERMANENT' CHECK (employment_type IN ('PERMANENT', 'DAILY_WORKER')),
+    employment_type VARCHAR(30) NOT NULL DEFAULT 'PERMANENT' CHECK (employment_type IN ('PERMANENT', 'PROBATIONARY', 'DAILY_WORKER')),
+    probation_end_date DATE,
+    probation_status VARCHAR(30) DEFAULT 'NOT_APPLICABLE',
     daily_rate NUMERIC(12, 3) CHECK (daily_rate IS NULL OR daily_rate >= 0),
     temporary_start_date DATE,
     temporary_end_date DATE,
@@ -100,13 +102,15 @@ CREATE TABLE IF NOT EXISTS public.employees (
         (social_security_registered = TRUE AND social_security_registration_date IS NOT NULL)
     ),
     CONSTRAINT chk_daily_worker_rules CHECK (
-        employment_type = 'PERMANENT' OR (employment_type = 'DAILY_WORKER' AND daily_rate IS NOT NULL AND daily_rate >= 0)
+        employment_type IN ('PERMANENT', 'PROBATIONARY') OR (employment_type = 'DAILY_WORKER' AND daily_rate IS NOT NULL AND daily_rate >= 0)
     )
 );
 
 ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS social_security_registered BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS social_security_registration_date DATE;
 ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS employment_type VARCHAR(30) NOT NULL DEFAULT 'PERMANENT';
+ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS probation_end_date DATE;
+ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS probation_status VARCHAR(30) DEFAULT 'NOT_APPLICABLE';
 ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS daily_rate NUMERIC(12, 3);
 ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS temporary_start_date DATE;
 ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS temporary_end_date DATE;
@@ -280,6 +284,7 @@ CREATE TABLE IF NOT EXISTS public.payroll (
     early_departure_deduction NUMERIC(12, 3) NOT NULL DEFAULT 0 CHECK (early_departure_deduction >= 0),
     daily_rate NUMERIC(12, 3) NOT NULL DEFAULT 0 CHECK (daily_rate >= 0),
     other_additions NUMERIC(12, 3) NOT NULL DEFAULT 0 CHECK (other_additions >= 0),
+    gratuities NUMERIC(12, 3) NOT NULL DEFAULT 0 CHECK (gratuities >= 0),
     other_deductions NUMERIC(12, 3) NOT NULL DEFAULT 0 CHECK (other_deductions >= 0),
     loan_deduction NUMERIC(12, 3) NOT NULL DEFAULT 0 CHECK (loan_deduction >= 0),
     net_pay NUMERIC(12, 3) CHECK (net_pay IS NULL OR net_pay >= 0),
@@ -304,6 +309,7 @@ ALTER TABLE public.payroll ADD COLUMN IF NOT EXISTS late_deduction NUMERIC(12, 3
 ALTER TABLE public.payroll ADD COLUMN IF NOT EXISTS early_departure_minutes INT NOT NULL DEFAULT 0;
 ALTER TABLE public.payroll ADD COLUMN IF NOT EXISTS early_departure_deduction NUMERIC(12, 3) NOT NULL DEFAULT 0;
 ALTER TABLE public.payroll ADD COLUMN IF NOT EXISTS daily_rate NUMERIC(12, 3) NOT NULL DEFAULT 0;
+ALTER TABLE public.payroll ADD COLUMN IF NOT EXISTS gratuities NUMERIC(12, 3) NOT NULL DEFAULT 0;
 
 -- Partial unique index ensuring only one active (non-cancelled) payroll per employee per month
 CREATE UNIQUE INDEX IF NOT EXISTS uq_active_payroll_per_month 

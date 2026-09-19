@@ -8,6 +8,9 @@ import {
   uploadIdentityImage,
   getEmployeeIdentityImages,
   getEmployeeById,
+  calculateProbationEndDate,
+  getEmployeesDueForContractSigning,
+  transitionProbationToPermanent,
 } from '../src/lib/services/employee-service';
 import { createContract, updateContract } from '../src/lib/services/contract-service';
 import {
@@ -17,6 +20,7 @@ import {
   recordEarlyDeparture,
   isAttendanceLocked,
   createOrUpdateAttendance,
+  detectShift,
 } from '../src/lib/services/attendance-service';
 import {
   createPayrollDraft,
@@ -25,6 +29,9 @@ import {
   refreshPayrollDraft,
   approvePayroll,
   validatePayrollCompleteness,
+  deletePayrollRun,
+  getPayrollById,
+  approveBulkPayrollForMonth,
 } from '../src/lib/services/payroll-service';
 import { getBatchPayslipData } from '../src/lib/services/payslip-service';
 import { UserSession, AuthorizationError } from '../src/lib/auth/rbac';
@@ -952,6 +959,218 @@ describe('HR & Payroll Production Business Rules & Specification Test Suite', ()
       const empUpdated = await getEmployeeById(adminUser, empUnsigned.id);
       expect(empUpdated.currentContract?.contractSigned).toBe(true);
       expect(empUpdated.currentContract?.contractSignedDate).toBe('2026-01-05');
+    });
+  });
+
+  // ==========================================
+  // SECTION 7: PROBATIONARY CONTRACTS & DUE CONTRACT SIGNING NOTIFICATIONS (4 TESTS)
+  // ==========================================
+  describe('7. 3-Month Probationary Contract & Contract Due Notifications', () => {
+    it('Rule 36: Creating employee with status PROBATIONARY sets a 3-month probationary contract and calculates probationEndDate', async () => {
+      const emp = await createEmployee(adminUser, {
+        employeeNo: 'EMP-PROB-01',
+        name: 'سامر أحمد',
+        department: 'المبيعات',
+        jobTitle: 'ممثل مبيعات',
+        startDate: '2026-01-15',
+        employmentType: 'PROBATIONARY',
+        monthlyBasic: 600,
+      });
+
+      expect(emp.employmentType).toBe('PROBATIONARY');
+      expect(emp.probationEndDate).toBe('2026-04-15');
+      expect(emp.probationStatus).toBe('IN_PROBATION');
+
+      const detailed = await getEmployeeById(adminUser, emp.id);
+      expect(detailed.employmentType).toBe('PROBATIONARY');
+      expect(detailed.probationEndDate).toBe('2026-04-15');
+      expect(detailed.probationStatus).toBe('IN_PROBATION');
+    });
+
+    it('Rule 37: getEmployeesDueForContractSigning identifies employees whose 3-month probation period has elapsed', async () => {
+      const pastStart = '2025-09-01';
+      const expectedProbationEnd = '2025-12-01';
+
+      const empProbExpired = await createEmployee(adminUser, {
+        employeeNo: 'EMP-PROB-02',
+        name: 'عماد مصطفى',
+        department: 'الدعم الفني',
+        jobTitle: 'فني صيانات',
+        startDate: pastStart,
+        employmentType: 'PROBATIONARY',
+        monthlyBasic: 550,
+      });
+
+      const dueList = await getEmployeesDueForContractSigning(adminUser);
+      const found = dueList.find((e) => e.id === empProbExpired.id);
+
+      expect(found).toBeDefined();
+      expect(found?.employeeNo).toBe('EMP-PROB-02');
+      expect(found?.probationEndDate).toBe(expectedProbationEnd);
+      expect(found?.daysPassedSinceProbationEnd).toBeGreaterThan(0);
+    });
+
+    it('Rule 38: Transitioning employee from PROBATIONARY to PERMANENT via transitionProbationToPermanent updates status and signs permanent contract', async () => {
+      const emp = await createEmployee(adminUser, {
+        employeeNo: 'EMP-PROB-03',
+        name: 'ياسر طارق',
+        department: 'الشبكات',
+        jobTitle: 'مهندس شبكات',
+        startDate: '2025-08-01',
+        employmentType: 'PROBATIONARY',
+        monthlyBasic: 800,
+      });
+
+      let dueList = await getEmployeesDueForContractSigning(adminUser);
+      expect(dueList.some((e) => e.id === emp.id)).toBe(true);
+
+      const updated = await transitionProbationToPermanent(adminUser, emp.id, {
+        monthlyBasic: 850,
+        monthlyAllowances: 100,
+        contractSignedDate: '2025-11-02',
+      });
+
+      expect(updated.employmentType).toBe('PERMANENT');
+      expect(updated.probationStatus).toBe('PASSED');
+
+      dueList = await getEmployeesDueForContractSigning(adminUser);
+      expect(dueList.some((e) => e.id === emp.id)).toBe(false);
+
+      const detailed = await getEmployeeById(adminUser, emp.id);
+      expect(detailed.currentContract?.contractSigned).toBe(true);
+      expect(detailed.currentContract?.contractSignedDate).toBe('2025-11-02');
+    });
+
+    it('Rule 39: Permanent employees (PERMANENT) do not trigger probation ending contract due notifications', async () => {
+      const empPerm = await createEmployee(adminUser, {
+        employeeNo: 'EMP-PERM-01',
+        name: 'نور الدين',
+        department: 'الإدارة',
+        jobTitle: 'مدير تنفيذي',
+        startDate: '2025-01-01',
+        employmentType: 'PERMANENT',
+        monthlyBasic: 1500,
+      });
+
+      const dueList = await getEmployeesDueForContractSigning(adminUser);
+      expect(dueList.some((e) => e.id === empPerm.id)).toBe(false);
+    });
+
+    it('Rule 40: deletePayrollRun permanently removes a payroll draft and audit logs the action', async () => {
+      const emp = await createEmployee(adminUser, {
+        employeeNo: 'EMP-DEL-PAY-01',
+        name: 'عمرو خالد',
+        department: 'المالية',
+        jobTitle: 'محاسب رواتب',
+        startDate: '2026-01-01',
+        employmentType: 'PERMANENT',
+        monthlyBasic: 900,
+      });
+
+      const draft = await createPayrollDraft(adminUser, {
+        employeeId: emp.id,
+        year: 2026,
+        month: 12,
+      });
+
+      expect(draft).toBeDefined();
+      const fetched = await getPayrollById(adminUser, draft.id);
+      expect(fetched.id).toBe(draft.id);
+
+      // Perform deletion
+      const deleted = await deletePayrollRun(adminUser, draft.id);
+      expect(deleted.id).toBe(draft.id);
+
+      // Confirm fetching deleted draft throws error
+      await expect(getPayrollById(adminUser, draft.id)).rejects.toThrow(/كشف الراتب غير موجود/);
+    });
+
+    it('Rule 41: approveBulkPayrollForMonth bulk approves drafts for a target month and freezes net pay', async () => {
+      const db = getDb();
+      const existingSettings = await db.select().from(schema.settings);
+      if (existingSettings.length === 0) {
+        await db.insert(schema.settings).values({
+          companyName: 'شركة الاختبار',
+          payrollPolicyConfirmed: true,
+        });
+      } else {
+        await db.update(schema.settings).set({ payrollPolicyConfirmed: true }).where(eq(schema.settings.id, existingSettings[0].id));
+      }
+
+      const emp1 = await createEmployee(adminUser, {
+        employeeNo: 'EMP-BULK-APP-01',
+        name: 'حاتم الشريف',
+        department: 'المستودعات',
+        jobTitle: 'أمين مخزن',
+        startDate: '2026-02-01',
+        employmentType: 'DAILY_WORKER',
+        dailyRate: 25,
+      });
+
+      const draft1 = await createPayrollDraft(adminUser, {
+        employeeId: emp1.id,
+        year: 2026,
+        month: 11,
+      });
+
+      expect(draft1.status).toBe('DRAFT');
+
+      const bulkRes = await approveBulkPayrollForMonth(adminUser, '2026-11');
+      expect(bulkRes.approvedCount).toBeGreaterThanOrEqual(1);
+
+      const approved1 = await getPayrollById(adminUser, draft1.id);
+      expect(approved1.status).toBe('APPROVED');
+      expect(approved1.netPay).toBeDefined();
+    });
+
+    it('Rule 42: detectShift classifies entries after 4:29 PM as Evening Shift (16:30-01:00) and <= 4:29 PM as Morning Shift (08:00-16:30)', () => {
+      const morning = detectShift('08:15');
+      expect(morning.shiftCode).toBe('MORNING');
+      expect(morning.schedStart).toBe('08:00');
+      expect(morning.schedEnd).toBe('16:30');
+
+      const evening = detectShift('16:30');
+      expect(evening.shiftCode).toBe('EVENING');
+      expect(evening.schedStart).toBe('16:30');
+      expect(evening.schedEnd).toBe('01:00');
+    });
+
+    it('Rule 43: Evening Shift (16:30-01:00) calculates 0 mins late at 16:30 and 15 mins late at 16:45', async () => {
+      const emp = await createEmployee(adminUser, {
+        employeeNo: 'EMP-EVENING-01',
+        name: 'طارق زياد',
+        department: 'الإنتاج',
+        jobTitle: 'عامل خط مساء',
+        startDate: '2026-01-01',
+        employmentType: 'PERMANENT',
+        monthlyBasic: 600,
+      });
+
+      const attOnTime = await markPresent(adminUser, emp.id, '2026-11-10', '16:30');
+      expect(attOnTime.lateMinutes).toBe(0);
+
+      const attLate = await markLate(adminUser, emp.id, '2026-11-12', '16:45');
+      expect(attLate.lateMinutes).toBe(15);
+      expect(attLate.notes).toContain('الوردية المسائية');
+    });
+
+    it('Rule 44: Morning Shift (08:00-16:30) calculates lateness and early departure relative to shift bounds', async () => {
+      const emp = await createEmployee(adminUser, {
+        employeeNo: 'EMP-EVENING-02',
+        name: 'هشام محمود',
+        department: 'التغليف',
+        jobTitle: 'عامل خط صباح',
+        startDate: '2026-01-01',
+        employmentType: 'PERMANENT',
+        monthlyBasic: 650,
+      });
+
+      const att = await markLate(adminUser, emp.id, '2026-11-11', '08:15');
+      expect(att.lateMinutes).toBe(15);
+      expect(att.notes).toContain('الوردية الصباحية');
+
+      const earlyDep = await recordEarlyDeparture(adminUser, att.id, '15:30', 'شخصي');
+      expect(earlyDep.earlyDepartureMinutes).toBe(60); // 16:30 - 15:30 = 60 mins
     });
   });
 });
