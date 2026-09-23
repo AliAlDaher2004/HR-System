@@ -14,12 +14,38 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Dynamic form state
+  const [employeeNo, setEmployeeNo] = useState<string>('');
+  const [isLoadingNo, setIsLoadingNo] = useState<boolean>(false);
   const [employmentType, setEmploymentType] = useState<'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER'>('PERMANENT');
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [ssRegistered, setSsRegistered] = useState<boolean>(false);
   const [ssDate, setSsDate] = useState<string>('');
   const [contractSigned, setContractSigned] = useState<boolean>(true);
   const [contractSignedDate, setContractSignedDate] = useState<string>('');
+
+  const fetchNextEmployeeNo = async () => {
+    setIsLoadingNo(true);
+    try {
+      const res = await fetch('/api/employees/next-number');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.nextEmployeeNo) {
+          setEmployeeNo(data.nextEmployeeNo);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingNo(false);
+    }
+  };
+
+  const handleOpen = () => {
+    setErrorMessage(null);
+    setEmployeeNo('');
+    setIsOpen(true);
+    fetchNextEmployeeNo();
+  };
 
   const probationEndDatePreview = React.useMemo(() => {
     if (!startDate) return '';
@@ -37,11 +63,16 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
     setErrorMessage(null);
 
     try {
+      if (!employeeNo.trim()) {
+        throw new Error('الرقم الوظيفي مطلوب');
+      }
+
       if (ssRegistered && !ssDate) {
         throw new Error('تاريخ التسجيل في الضمان الاجتماعي مطلوب عند اختيار (مسجل في الضمان)');
       }
 
       const formData = new FormData(e.currentTarget);
+      formData.set('employeeNo', employeeNo.trim());
 
       if (employmentType === 'PERMANENT' || employmentType === 'PROBATIONARY') {
         const basicRaw = formData.get('monthlyBasic');
@@ -65,6 +96,7 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
       await createEmployeeAction(formData);
       setIsOpen(false);
       // Reset form
+      setEmployeeNo('');
       setEmploymentType('PERMANENT');
       setSsRegistered(false);
       setSsDate('');
@@ -81,10 +113,7 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
     <>
       <button
         type="button"
-        onClick={() => {
-          setErrorMessage(null);
-          setIsOpen(true);
-        }}
+        onClick={handleOpen}
         className="win-btn text-xs font-bold py-1 px-3 flex items-center gap-1.5 shadow-sm"
       >
         <span className="text-emerald-700 font-bold text-sm">+</span>
@@ -109,14 +138,27 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
             <legend className="px-1 text-black font-bold">البيانات الوظيفية والشخصية</legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
-                <label className="block font-bold text-black mb-0.5">
-                  الرقم الوظيفي <span className="text-rose-600">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-0.5">
+                  <label className="font-bold text-black">
+                    الرقم الوظيفي <span className="text-rose-600">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={fetchNextEmployeeNo}
+                    disabled={isLoadingNo}
+                    title="توليد رقم وظيفي جديد تلقائياً"
+                    className="text-[10px] text-blue-900 font-bold hover:underline flex items-center gap-0.5"
+                  >
+                    <span>{isLoadingNo ? 'جارٍ التوليد...' : '🔄 رقم تلقائي'}</span>
+                  </button>
+                </div>
                 <input
                   name="employeeNo"
                   required
-                  placeholder="EMP-1009"
-                  className="win-input w-full py-1 px-2 font-mono font-bold"
+                  value={employeeNo}
+                  onChange={(e) => setEmployeeNo(e.target.value)}
+                  placeholder="2026001"
+                  className="win-input w-full py-1 px-2 font-mono font-bold text-[#0A246A]"
                 />
               </div>
 
@@ -184,7 +226,7 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
 
           {/* Group 2: Employment Type (Permanent vs Probationary 3-Month vs Daily Worker) */}
           <fieldset className="border border-[#808080] p-2.5 bg-white">
-            <legend className="px-1 text-black font-bold">حالة الموظف ونوع التوظيف (تعيين دائم / عقد تجريبي 3 أشهر)</legend>
+            <legend className="px-1 text-black font-bold">حالة الموظف ونوع التوظيف</legend>
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-4 sm:gap-6">
                 <label className="flex items-center gap-1.5 cursor-pointer font-bold">
@@ -195,7 +237,7 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
                     checked={employmentType === 'PERMANENT'}
                     onChange={() => setEmploymentType('PERMANENT')}
                   />
-                  <span>موظف مثبت / دائم</span>
+                  <span>مثبت</span>
                 </label>
 
                 <label className="flex items-center gap-1.5 cursor-pointer font-bold text-blue-900">
@@ -206,7 +248,7 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
                     checked={employmentType === 'PROBATIONARY'}
                     onChange={() => setEmploymentType('PROBATIONARY')}
                   />
-                  <span>عقد تجريبي لمدة 3 أشهر (تحت التجربة)</span>
+                  <span>تجريبي</span>
                 </label>
 
                 <label className="flex items-center gap-1.5 cursor-pointer font-bold text-amber-900">
@@ -217,7 +259,7 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
                     checked={employmentType === 'DAILY_WORKER'}
                     onChange={() => setEmploymentType('DAILY_WORKER')}
                   />
-                  <span>عامل مياومة (أجر يومي)</span>
+                  <span>مياومة</span>
                 </label>
               </div>
 

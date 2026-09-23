@@ -121,6 +121,15 @@ ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS break_minutes INT;
 ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS identity_image_front VARCHAR(500);
 ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS identity_image_back VARCHAR(500);
 
+-- Update check constraints on existing databases to ensure PROBATIONARY employment type is permitted
+ALTER TABLE public.employees DROP CONSTRAINT IF EXISTS employees_employment_type_check;
+ALTER TABLE public.employees ADD CONSTRAINT employees_employment_type_check CHECK (employment_type IN ('PERMANENT', 'PROBATIONARY', 'DAILY_WORKER'));
+
+ALTER TABLE public.employees DROP CONSTRAINT IF EXISTS chk_daily_worker_rules;
+ALTER TABLE public.employees ADD CONSTRAINT chk_daily_worker_rules CHECK (
+    employment_type IN ('PERMANENT', 'PROBATIONARY') OR (employment_type = 'DAILY_WORKER' AND daily_rate IS NOT NULL AND daily_rate >= 0)
+);
+
 CREATE INDEX IF NOT EXISTS idx_employees_no ON public.employees(employee_no);
 CREATE INDEX IF NOT EXISTS idx_employees_department ON public.employees(department);
 CREATE INDEX IF NOT EXISTS idx_employees_status ON public.employees(status);

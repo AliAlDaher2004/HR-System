@@ -188,6 +188,7 @@ export default async function EmployeeDetailPage({
     const breakMinsRaw = formData.get('breakMinutes') as string;
 
     await updateEmployee(currentUser, employeeId, {
+      employeeNo: (formData.get('employeeNo') as string) || undefined,
       name: formData.get('name') as string,
       department: formData.get('department') as string,
       jobTitle: formData.get('jobTitle') as string,

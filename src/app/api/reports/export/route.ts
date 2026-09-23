@@ -71,7 +71,11 @@ export async function GET(req: NextRequest) {
         r.employeeName,
         r.department,
         r.jobTitle,
-        r.employmentType === 'DAILY_WORKER' ? 'مياومة' : 'مثبت',
+        r.employmentType === 'DAILY_WORKER'
+          ? 'مياومة'
+          : r.employmentType === 'PROBATIONARY'
+          ? 'تجريبي'
+          : 'مثبت',
         r.employmentType === 'DAILY_WORKER'
           ? `${Number(r.dailyRate || 0).toFixed(3)} × ${r.workedDays || 0}ي`
           : Number(r.basicEarned || 0).toFixed(3),

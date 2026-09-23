@@ -12,7 +12,7 @@ interface EmployeeAttendanceRow {
     employeeNo: string;
     name: string;
     department: string;
-    employmentType: 'PERMANENT' | 'DAILY_WORKER';
+    employmentType: 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER';
     workStartTime: string | null;
     workEndTime: string | null;
   };
@@ -414,13 +414,19 @@ export function DailyAttendanceSheetClient({
                     </td>
                     <td>
                       <span
-                        className={`px-1 py-0.5 text-[10px] font-bold ${
+                        className={`inline-block px-1.5 py-0.5 text-[10px] font-bold rounded border ${
                           emp.employmentType === 'DAILY_WORKER'
-                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                            : 'bg-blue-50 text-blue-900 border border-blue-200'
+                            ? 'bg-amber-100 text-amber-900 border-amber-300'
+                            : emp.employmentType === 'PROBATIONARY'
+                            ? 'bg-blue-100 text-blue-900 border-blue-300'
+                            : 'bg-emerald-100 text-emerald-900 border-emerald-300'
                         }`}
                       >
-                        {emp.employmentType === 'DAILY_WORKER' ? 'مياومة' : 'مثبت'}
+                        {emp.employmentType === 'DAILY_WORKER'
+                          ? 'مياومة'
+                          : emp.employmentType === 'PROBATIONARY'
+                          ? 'تجريبي'
+                          : 'مثبت'}
                       </span>
                     </td>
                     <td className="text-slate-700">{emp.department}</td>

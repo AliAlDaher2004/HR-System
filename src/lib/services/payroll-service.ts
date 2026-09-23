@@ -5,7 +5,7 @@ import { logAuditEvent } from '../auth/audit';
 import { getSystemSettings } from './settings-service';
 
 export interface NetCalculationResult {
-  employmentType?: 'PERMANENT' | 'DAILY_WORKER';
+  employmentType?: 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER';
   workedDays: number;
   dailyRate: number;
   dailyEarnings: number;
@@ -32,7 +32,7 @@ export interface NetCalculationResult {
 }
 
 export function computeNetPayroll(values: {
-  employmentType?: 'PERMANENT' | 'DAILY_WORKER';
+  employmentType?: 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER';
   workedDays?: number;
   dailyRate?: number;
   basicEarned?: number;

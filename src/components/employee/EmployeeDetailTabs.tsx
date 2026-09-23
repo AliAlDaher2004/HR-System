@@ -223,10 +223,10 @@ export function EmployeeDetailTabs({
                     }`}
                   >
                     {employee.employmentType === 'DAILY_WORKER'
-                      ? 'عامل مياومة (أجر يومي)'
+                      ? 'مياومة'
                       : employee.employmentType === 'PROBATIONARY'
-                      ? 'عقد تجريبي (3 أشهر)'
-                      : 'موظف مثبت / دائم'}
+                      ? 'تجريبي'
+                      : 'مثبت'}
                   </span>
                 </div>
                 <div>

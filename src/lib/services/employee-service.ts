@@ -1,5 +1,5 @@
 import { getDb, schema } from '../../db';
-import { eq, and, sql, desc, ilike, or } from 'drizzle-orm';
+import { eq, ne, and, sql, desc, ilike, or } from 'drizzle-orm';
 import { UserSession, RBAC, AuthorizationError, requireRole } from '../auth/rbac';
 import { logAuditEvent } from '../auth/audit';
 import { uploadPrivateFile, getSignedDownloadUrl, PRIVATE_BUCKETS } from '../supabase/storage';
@@ -49,7 +49,17 @@ export interface DetailedEmployeeDTO extends BasicEmployeeDTO {
 }
 
 export function calculateProbationEndDate(startDateStr: string): string {
-  const [year, month, day] = startDateStr.split('-').map(Number);
+  if (!startDateStr) return '';
+  const cleanStr = startDateStr.split('T')[0];
+  const parts = cleanStr.includes('/') ? cleanStr.split('/') : cleanStr.split('-');
+  if (parts.length < 3) return '';
+  let year: number, month: number, day: number;
+  if (parts[0].length === 4) {
+    [year, month, day] = parts.map(Number);
+  } else {
+    [month, day, year] = parts.map(Number);
+  }
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return '';
   const d = new Date(year, month - 1 + 3, day);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -200,10 +210,40 @@ export async function getEmployeeById(
   return result;
 }
 
+export async function generateNextEmployeeNo(): Promise<string> {
+  const db = getDb();
+  const allEmps = await db.select({ employeeNo: schema.employees.employeeNo }).from(schema.employees);
+
+  const currentYear = new Date().getFullYear();
+  const defaultBase = currentYear * 1000 + 1; // e.g., 2026001
+
+  if (allEmps.length === 0) {
+    return String(defaultBase);
+  }
+
+  let maxNum = 0;
+  for (const emp of allEmps) {
+    const raw = emp.employeeNo;
+    const digits = raw.replace(/\D/g, '');
+    if (digits) {
+      const val = parseInt(digits, 10);
+      if (!isNaN(val) && val > maxNum) {
+        maxNum = val;
+      }
+    }
+  }
+
+  if (maxNum === 0) {
+    return String(defaultBase);
+  }
+
+  return String(maxNum + 1);
+}
+
 export async function createEmployee(
   actor: UserSession,
   data: {
-    employeeNo: string;
+    employeeNo?: string;
     name: string;
     department: string;
     jobTitle: string;
@@ -235,10 +275,19 @@ export async function createEmployee(
 
   // 1. Validation
   if (!data.name?.trim()) throw new Error('اسم الموظف مطلوب');
-  if (!data.employeeNo?.trim()) throw new Error('الرقم الوظيفي مطلوب');
   if (!data.department?.trim()) throw new Error('القسم مطلوب');
   if (!data.jobTitle?.trim()) throw new Error('المسمى الوظيفي مطلوب');
   if (!data.startDate) throw new Error('تاريخ بداية العمل مطلوب');
+
+  let finalEmployeeNo = data.employeeNo?.trim();
+  if (!finalEmployeeNo) {
+    finalEmployeeNo = await generateNextEmployeeNo();
+  } else {
+    const existing = await db.select().from(schema.employees).where(eq(schema.employees.employeeNo, finalEmployeeNo));
+    if (existing.length > 0) {
+      throw new Error(`الرقم الوظيفي (${finalEmployeeNo}) مستخدم بالفعل لموظف آخر.`);
+    }
+  }
 
   if (data.endDate && new Date(data.endDate) < new Date(data.startDate)) {
     throw new Error('تاريخ نهاية الخدمة لا يمكن أن يكون قبل تاريخ البداية');
@@ -283,14 +332,8 @@ export async function createEmployee(
     dailyRateStr = data.dailyRate !== undefined && data.dailyRate !== null ? Number(data.dailyRate).toFixed(3) : null;
   }
 
-  // 2. Uniqueness check
-  const existing = await db.select().from(schema.employees).where(eq(schema.employees.employeeNo, data.employeeNo.trim()));
-  if (existing.length > 0) {
-    throw new Error(`الرقم الوظيفي (${data.employeeNo}) مستخدم بالفعل لموظف آخر.`);
-  }
-
   const [inserted] = await db.insert(schema.employees).values({
-    employeeNo: data.employeeNo.trim(),
+    employeeNo: finalEmployeeNo,
     name: data.name.trim(),
     department: data.department.trim(),
     jobTitle: data.jobTitle.trim(),
@@ -376,6 +419,7 @@ export async function updateEmployee(
   actor: UserSession,
   employeeId: string,
   data: {
+    employeeNo?: string;
     name?: string;
     department?: string;
     jobTitle?: string;
@@ -406,6 +450,21 @@ export async function updateEmployee(
   }
 
   const current = existing[0];
+
+  let newEmployeeNo = current.employeeNo;
+  if (data.employeeNo !== undefined && data.employeeNo.trim() !== current.employeeNo) {
+    const trimmedNo = data.employeeNo.trim();
+    if (!trimmedNo) {
+      throw new Error('الرقم الوظيفي لا يمكن أن يكون فارغاً');
+    }
+    const existingWithNo = await db.select().from(schema.employees)
+      .where(and(eq(schema.employees.employeeNo, trimmedNo), ne(schema.employees.id, employeeId)));
+    if (existingWithNo.length > 0) {
+      throw new Error(`الرقم الوظيفي (${trimmedNo}) مستخدم بالفعل لموظف آخر.`);
+    }
+    newEmployeeNo = trimmedNo;
+  }
+
   const effectiveStart = data.startDate || current.startDate;
   const effectiveEnd = data.endDate !== undefined ? data.endDate : current.endDate;
 
@@ -455,6 +514,7 @@ export async function updateEmployee(
 
   const [updated] = await db.update(schema.employees)
     .set({
+      employeeNo: newEmployeeNo,
       name: data.name?.trim() ?? current.name,
       department: data.department?.trim() ?? current.department,
       jobTitle: data.jobTitle?.trim() ?? current.jobTitle,

@@ -107,6 +107,7 @@ export default async function EmployeesPage({
     const breakMinsRaw = formData.get('breakMinutes') as string;
 
     await updateEmployee(currentUser, empId, {
+      employeeNo: (formData.get('employeeNo') as string) || undefined,
       name: formData.get('name') as string,
       department: formData.get('department') as string,
       jobTitle: formData.get('jobTitle') as string,
@@ -202,8 +203,9 @@ export default async function EmployeesPage({
               className="win-input w-full py-1 px-2"
             >
               <option value="">جميع الأنواع</option>
-              <option value="PERMANENT">موظف مثبت / دائم</option>
-              <option value="DAILY_WORKER">عامل مياومة</option>
+              <option value="PERMANENT">مثبت</option>
+              <option value="PROBATIONARY">تجريبي</option>
+              <option value="DAILY_WORKER">مياومة</option>
             </select>
           </div>
 
@@ -285,13 +287,19 @@ export default async function EmployeesPage({
                   <td className="text-slate-700">{emp.jobTitle}</td>
                   <td>
                     <span
-                      className={`px-1 py-0.5 text-[10px] font-bold ${
+                      className={`inline-block px-1.5 py-0.5 text-[10px] font-bold rounded border ${
                         emp.employmentType === 'DAILY_WORKER'
-                          ? 'bg-amber-100 text-amber-900 border border-amber-400'
-                          : 'bg-blue-50 text-blue-900 border border-blue-300'
+                          ? 'bg-amber-100 text-amber-900 border-amber-400'
+                          : emp.employmentType === 'PROBATIONARY'
+                          ? 'bg-blue-100 text-blue-900 border-blue-400'
+                          : 'bg-emerald-100 text-emerald-900 border-emerald-400'
                       }`}
                     >
-                      {emp.employmentType === 'DAILY_WORKER' ? 'مياومة' : 'مثبت'}
+                      {emp.employmentType === 'DAILY_WORKER'
+                        ? 'مياومة'
+                        : emp.employmentType === 'PROBATIONARY'
+                        ? 'تجريبي'
+                        : 'مثبت'}
                     </span>
                   </td>
                   <td>

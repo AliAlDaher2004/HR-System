@@ -21,6 +21,7 @@ export function EditEmployeeModal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Form states pre-filled with current employee data
+  const [employeeNo, setEmployeeNo] = useState<string>(employee.employeeNo || '');
   const [name, setName] = useState<string>(employee.name || '');
   const [department, setDepartment] = useState<string>(employee.department || '');
   const [jobTitle, setJobTitle] = useState<string>(employee.jobTitle || '');
@@ -59,6 +60,7 @@ export function EditEmployeeModal({
 
   const handleOpen = () => {
     // Reset state to current employee props when modal opens
+    setEmployeeNo(employee.employeeNo || '');
     setName(employee.name || '');
     setDepartment(employee.department || '');
     setJobTitle(employee.jobTitle || '');
@@ -87,6 +89,10 @@ export function EditEmployeeModal({
     setErrorMessage(null);
 
     try {
+      if (!employeeNo.trim()) {
+        throw new Error('الرقم الوظيفي مطلوب ولا يمكن تركه فارغاً');
+      }
+
       if (ssRegistered && !ssDate) {
         throw new Error('تاريخ التسجيل في الضمان الاجتماعي مطلوب عند اختيار (مسجل في الضمان)');
       }
@@ -103,6 +109,7 @@ export function EditEmployeeModal({
 
       const formData = new FormData(e.currentTarget);
       formData.set('employeeId', employee.id);
+      formData.set('employeeNo', employeeNo.trim());
       formData.set('name', name);
       formData.set('department', department);
       formData.set('jobTitle', jobTitle);
@@ -159,11 +166,15 @@ export function EditEmployeeModal({
             <legend className="px-1 text-black font-bold">البيانات الوظيفية والشخصية</legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
-                <label className="block font-bold text-black mb-0.5">الرقم الوظيفي (غير قابل للتعديل)</label>
+                <label className="block font-bold text-black mb-0.5">
+                  الرقم الوظيفي <span className="text-rose-600">*</span>
+                </label>
                 <input
-                  value={employee.employeeNo}
-                  disabled
-                  className="win-input w-full py-1 px-2 font-mono font-bold bg-[#E0DDD5] text-slate-700 cursor-not-allowed"
+                  name="employeeNo"
+                  required
+                  value={employeeNo}
+                  onChange={(e) => setEmployeeNo(e.target.value)}
+                  className="win-input w-full py-1 px-2 font-mono font-bold text-[#0A246A]"
                 />
               </div>
 
@@ -261,7 +272,7 @@ export function EditEmployeeModal({
                     checked={employmentType === 'PERMANENT'}
                     onChange={() => setEmploymentType('PERMANENT')}
                   />
-                  <span>موظف مثبت / دائم</span>
+                  <span>مثبت</span>
                 </label>
 
                 <label className="flex items-center gap-1.5 cursor-pointer font-bold text-blue-900">
@@ -272,7 +283,7 @@ export function EditEmployeeModal({
                     checked={employmentType === 'PROBATIONARY'}
                     onChange={() => setEmploymentType('PROBATIONARY')}
                   />
-                  <span>عقد تجريبي لمدة 3 أشهر (تحت التجربة)</span>
+                  <span>تجريبي</span>
                 </label>
 
                 <label className="flex items-center gap-1.5 cursor-pointer font-bold text-amber-900">
@@ -283,7 +294,7 @@ export function EditEmployeeModal({
                     checked={employmentType === 'DAILY_WORKER'}
                     onChange={() => setEmploymentType('DAILY_WORKER')}
                   />
-                  <span>عامل مياومة (أجر يومي)</span>
+                  <span>مياومة</span>
                 </label>
               </div>
 
