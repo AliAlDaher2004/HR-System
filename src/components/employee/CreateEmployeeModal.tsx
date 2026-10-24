@@ -22,6 +22,9 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
   const [ssDate, setSsDate] = useState<string>('');
   const [contractSigned, setContractSigned] = useState<boolean>(true);
   const [contractSignedDate, setContractSignedDate] = useState<string>('');
+  const [workStartTime, setWorkStartTime] = useState<string>('08:00');
+  const [workEndTime, setWorkEndTime] = useState<string>('16:30');
+  const [breakMinutes, setBreakMinutes] = useState<string>('60');
 
   const fetchNextEmployeeNo = async () => {
     setIsLoadingNo(true);
@@ -102,6 +105,9 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
       setSsDate('');
       setContractSigned(true);
       setContractSignedDate('');
+      setWorkStartTime('08:00');
+      setWorkEndTime('16:30');
+      setBreakMinutes('60');
     } catch (err: any) {
       setErrorMessage(err.message || 'حدث خطأ أثناء حفظ بيانات الموظف');
     } finally {
@@ -436,16 +442,56 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
             </div>
           </fieldset>
 
-          {/* Group 4: Working Hours (Optional overrides) */}
-          <fieldset className="border border-[#808080] p-2.5 bg-white">
-            <legend className="px-1 text-black font-bold">أوقات الدوام المخصصة (اختياري)</legend>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {/* Group 4: Working Hours & Shift Selection */}
+          <fieldset className="border border-[#808080] p-2.5 bg-white space-y-2">
+            <legend className="px-1 text-black font-bold">الوردية ومواعيد الدوام</legend>
+
+            {/* Quick Shift Selection Buttons */}
+            <div>
+              <label className="block text-[11px] font-bold text-black mb-1">اختر الوردية المعتمدة للموظف:</label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWorkStartTime('08:00');
+                    setWorkEndTime('16:30');
+                    setBreakMinutes('60');
+                  }}
+                  className={`px-3 py-1 text-xs font-bold rounded border flex items-center gap-1.5 transition-none ${
+                    workStartTime === '08:00' && workEndTime === '16:30'
+                      ? 'bg-amber-600 text-white border-amber-700 shadow-inner'
+                      : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                  }`}
+                >
+                  <span>☀️ الوردية الصباحية (08:00 - 16:30)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWorkStartTime('16:30');
+                    setWorkEndTime('01:00');
+                    setBreakMinutes('60');
+                  }}
+                  className={`px-3 py-1 text-xs font-bold rounded border flex items-center gap-1.5 transition-none ${
+                    workStartTime === '16:30' && workEndTime === '01:00'
+                      ? 'bg-indigo-700 text-white border-indigo-800 shadow-inner'
+                      : 'bg-indigo-50 text-indigo-900 border-indigo-300 hover:bg-indigo-100'
+                  }`}
+                >
+                  <span>🌙 الوردية المسائية (16:30 - 01:00)</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-[#808080]/30">
               <div>
                 <label className="block text-black font-bold mb-0.5">وقت بدء الدوام</label>
                 <input
                   type="time"
                   name="workStartTime"
-                  defaultValue="08:00"
+                  value={workStartTime}
+                  onChange={(e) => setWorkStartTime(e.target.value)}
                   className="win-input w-full py-1 px-2 font-mono"
                 />
               </div>
@@ -455,7 +501,8 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
                 <input
                   type="time"
                   name="workEndTime"
-                  defaultValue="17:00"
+                  value={workEndTime}
+                  onChange={(e) => setWorkEndTime(e.target.value)}
                   className="win-input w-full py-1 px-2 font-mono"
                 />
               </div>
@@ -465,7 +512,8 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
                 <input
                   type="number"
                   name="breakMinutes"
-                  defaultValue="60"
+                  value={breakMinutes}
+                  onChange={(e) => setBreakMinutes(e.target.value)}
                   min="0"
                   className="win-input w-full py-1 px-2 font-mono"
                 />

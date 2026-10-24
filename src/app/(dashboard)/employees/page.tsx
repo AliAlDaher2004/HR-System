@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { CreateEmployeeModal } from '@/components/employee/CreateEmployeeModal';
 import { EmployeeTableActions } from '@/components/employee/EmployeeTableActions';
+import { getEmployeeShift, getEmployeeShiftCode } from '@/lib/utils/shift';
+import { PrintEmployeesModal } from '@/components/employee/PrintEmployeesModal';
 
 export default async function EmployeesPage({
   searchParams,
@@ -17,6 +19,7 @@ export default async function EmployeesPage({
     status?: 'ACTIVE' | 'TERMINATED';
     socialSecurity?: 'REGISTERED' | 'NOT_REGISTERED';
     employmentType?: 'PERMANENT' | 'DAILY_WORKER';
+    shift?: 'MORNING' | 'EVENING';
   }>;
 }) {
   const user = await getCurrentUser();
@@ -26,8 +29,11 @@ export default async function EmployeesPage({
 
   // Fetch counts for Active vs Archived staff
   const allEmployeesForCount = await getEmployees(user);
+  const departments = Array.from(new Set(allEmployeesForCount.map((e) => e.department))).filter(Boolean);
   const activeCount = allEmployeesForCount.filter((e) => e.status === 'ACTIVE').length;
   const archivedCount = allEmployeesForCount.filter((e) => e.status === 'TERMINATED').length;
+  const activeMorningCount = allEmployeesForCount.filter((e) => e.status === 'ACTIVE' && getEmployeeShiftCode(e.workStartTime) === 'MORNING').length;
+  const activeEveningCount = allEmployeesForCount.filter((e) => e.status === 'ACTIVE' && getEmployeeShiftCode(e.workStartTime) === 'EVENING').length;
 
   let employees = await getEmployees(user, {
     search: resolvedSearchParams.search,
@@ -35,7 +41,7 @@ export default async function EmployeesPage({
     status: resolvedSearchParams.status,
   });
 
-  // Filter in-memory for extended social security & employment type filters if needed
+  // Filter in-memory for extended social security, employment type, and shift filters
   if (resolvedSearchParams.socialSecurity === 'REGISTERED') {
     employees = employees.filter((e) => e.socialSecurityRegistered);
   } else if (resolvedSearchParams.socialSecurity === 'NOT_REGISTERED') {
@@ -44,6 +50,12 @@ export default async function EmployeesPage({
 
   if (resolvedSearchParams.employmentType) {
     employees = employees.filter((e) => e.employmentType === resolvedSearchParams.employmentType);
+  }
+
+  if (resolvedSearchParams.shift === 'MORNING') {
+    employees = employees.filter((e) => getEmployeeShiftCode(e.workStartTime) === 'MORNING');
+  } else if (resolvedSearchParams.shift === 'EVENING') {
+    employees = employees.filter((e) => getEmployeeShiftCode(e.workStartTime) === 'EVENING');
   }
 
   async function handleCreateEmployee(formData: FormData) {
@@ -144,9 +156,20 @@ export default async function EmployeesPage({
           </p>
         </div>
 
-        {['ADMIN', 'HR'].includes(user.role) && (
-          <CreateEmployeeModal createEmployeeAction={handleCreateEmployee} />
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          <PrintEmployeesModal
+            departments={departments}
+            currentShift={resolvedSearchParams.shift || ''}
+            currentDepartment={resolvedSearchParams.department || ''}
+            activeCount={activeCount}
+            morningCount={activeMorningCount}
+            eveningCount={activeEveningCount}
+          />
+
+          {['ADMIN', 'HR'].includes(user.role) && (
+            <CreateEmployeeModal createEmployeeAction={handleCreateEmployee} />
+          )}
+        </div>
       </div>
 
       {/* Section Tabs: Active Staff vs Archived Staff */}
@@ -183,8 +206,8 @@ export default async function EmployeesPage({
       </div>
 
       {/* Filter / Search Bar */}
-      <div className="win-raised p-2 bg-[#ECE9D8]">
-        <form method="GET" className="grid grid-cols-1 sm:grid-cols-5 gap-2 text-xs">
+      <div className="win-raised p-2 bg-[#ECE9D8] space-y-2">
+        <form method="GET" className="grid grid-cols-1 sm:grid-cols-6 gap-2 text-xs">
           <div>
             <label className="block text-[11px] font-bold text-black mb-0.5">بحث سريع</label>
             <input
@@ -193,6 +216,19 @@ export default async function EmployeesPage({
               placeholder="بالاسم أو الرقم الوظيفي..."
               className="win-input w-full py-1 px-2"
             />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-black mb-0.5">الوردية (الدوام)</label>
+            <select
+              name="shift"
+              defaultValue={resolvedSearchParams.shift || ''}
+              className="win-input w-full py-1 px-2"
+            >
+              <option value="">جميع الورديات</option>
+              <option value="MORNING">☀️ الوردية الصباحية</option>
+              <option value="EVENING">🌙 الوردية المسائية</option>
+            </select>
           </div>
 
           <div>
@@ -245,6 +281,66 @@ export default async function EmployeesPage({
             </button>
           </div>
         </form>
+
+        {/* Quick Shift Toggle Pills */}
+        <div className="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-[#808080]/30 text-xs">
+          <span className="text-[11px] font-bold text-black flex items-center gap-1">
+            <span>⏱️</span>
+            <span>التبديل السريع للوردية:</span>
+          </span>
+          <Link
+            href={`/employees?${new URLSearchParams({
+              ...(resolvedSearchParams.search ? { search: resolvedSearchParams.search } : {}),
+              ...(resolvedSearchParams.status ? { status: resolvedSearchParams.status } : {}),
+              ...(resolvedSearchParams.department ? { department: resolvedSearchParams.department } : {}),
+              ...(resolvedSearchParams.employmentType ? { employmentType: resolvedSearchParams.employmentType } : {}),
+              ...(resolvedSearchParams.socialSecurity ? { socialSecurity: resolvedSearchParams.socialSecurity } : {}),
+            }).toString()}`}
+            className={`px-2.5 py-0.5 rounded flex items-center gap-1 border font-bold ${
+              !resolvedSearchParams.shift
+                ? 'bg-[#0A246A] text-white border-[#0A246A]'
+                : 'bg-white text-slate-700 border-slate-300 hover:bg-[#F0EEE5]'
+            }`}
+          >
+            <span>🔘 جميع الورديات</span>
+          </Link>
+          <Link
+            href={`/employees?${new URLSearchParams({
+              ...(resolvedSearchParams.search ? { search: resolvedSearchParams.search } : {}),
+              ...(resolvedSearchParams.status ? { status: resolvedSearchParams.status } : {}),
+              ...(resolvedSearchParams.department ? { department: resolvedSearchParams.department } : {}),
+              ...(resolvedSearchParams.employmentType ? { employmentType: resolvedSearchParams.employmentType } : {}),
+              ...(resolvedSearchParams.socialSecurity ? { socialSecurity: resolvedSearchParams.socialSecurity } : {}),
+              shift: 'MORNING',
+            }).toString()}`}
+            className={`px-2.5 py-0.5 rounded flex items-center gap-1 border font-bold ${
+              resolvedSearchParams.shift === 'MORNING'
+                ? 'bg-amber-600 text-white border-amber-700'
+                : 'bg-white text-amber-900 border-amber-300 hover:bg-amber-50'
+            }`}
+          >
+            <span>☀️ الوردية الصباحية</span>
+            <span className="font-mono text-[10px] bg-amber-100 text-amber-900 px-1 rounded">({activeMorningCount})</span>
+          </Link>
+          <Link
+            href={`/employees?${new URLSearchParams({
+              ...(resolvedSearchParams.search ? { search: resolvedSearchParams.search } : {}),
+              ...(resolvedSearchParams.status ? { status: resolvedSearchParams.status } : {}),
+              ...(resolvedSearchParams.department ? { department: resolvedSearchParams.department } : {}),
+              ...(resolvedSearchParams.employmentType ? { employmentType: resolvedSearchParams.employmentType } : {}),
+              ...(resolvedSearchParams.socialSecurity ? { socialSecurity: resolvedSearchParams.socialSecurity } : {}),
+              shift: 'EVENING',
+            }).toString()}`}
+            className={`px-2.5 py-0.5 rounded flex items-center gap-1 border font-bold ${
+              resolvedSearchParams.shift === 'EVENING'
+                ? 'bg-indigo-700 text-white border-indigo-800'
+                : 'bg-white text-indigo-900 border-indigo-300 hover:bg-indigo-50'
+            }`}
+          >
+            <span>🌙 الوردية المسائية</span>
+            <span className="font-mono text-[10px] bg-indigo-100 text-indigo-900 px-1 rounded">({activeEveningCount})</span>
+          </Link>
+        </div>
       </div>
 
       {/* Employees High-Density Table */}
@@ -257,6 +353,7 @@ export default async function EmployeesPage({
               <th className="w-28">القسم</th>
               <th className="w-28">المسمى الوظيفي</th>
               <th className="w-24">نوع التوظيف</th>
+              <th className="w-24">الوردية</th>
               <th className="w-36">الضمان الاجتماعي</th>
               <th className="w-24">تاريخ المباشرة</th>
               {isArchivedView && <th className="w-24">نهاية الخدمة</th>}
@@ -267,75 +364,88 @@ export default async function EmployeesPage({
           <tbody>
             {employees.length === 0 ? (
               <tr>
-                <td colSpan={isArchivedView ? 10 : 9} className="py-6 text-center text-[#808080]">
+                <td colSpan={isArchivedView ? 11 : 10} className="py-6 text-center text-[#808080]">
                   لا يوجد موظفون مطابقون لشروط التصفية المحددة
                 </td>
               </tr>
             ) : (
-              employees.map((emp) => (
-                <tr key={emp.id} className="hover:bg-[#E8EEF7]">
-                  <td className="font-mono font-bold">{emp.employeeNo}</td>
-                  <td className="font-bold text-[#0A246A]">
-                    <Link
-                      href={`/employees/${emp.id}`}
-                      className="hover:underline flex items-center gap-1"
-                    >
-                      <span>{emp.name}</span>
-                    </Link>
-                  </td>
-                  <td className="text-slate-700">{emp.department}</td>
-                  <td className="text-slate-700">{emp.jobTitle}</td>
-                  <td>
-                    <span
-                      className={`inline-block px-1.5 py-0.5 text-[10px] font-bold rounded border ${
-                        emp.employmentType === 'DAILY_WORKER'
-                          ? 'bg-amber-100 text-amber-900 border-amber-400'
-                          : emp.employmentType === 'PROBATIONARY'
-                          ? 'bg-blue-100 text-blue-900 border-blue-400'
-                          : 'bg-emerald-100 text-emerald-900 border-emerald-400'
-                      }`}
-                    >
-                      {emp.employmentType === 'DAILY_WORKER'
-                        ? 'مياومة'
-                        : emp.employmentType === 'PROBATIONARY'
-                        ? 'تجريبي'
-                        : 'مثبت'}
-                    </span>
-                  </td>
-                  <td>
-                    {emp.socialSecurityRegistered ? (
-                      <div className="text-[11px] text-emerald-800 font-bold flex items-center gap-1">
-                        <span>✓ مسجل</span>
-                        {emp.socialSecurityRegistrationDate && (
-                          <span className="text-[10px] text-slate-500 font-mono font-normal">
-                            ({emp.socialSecurityRegistrationDate})
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-[11px] text-slate-400">غير مسجل</span>
-                    )}
-                  </td>
-                  <td className="font-mono text-[11px]">{emp.startDate}</td>
-                  {isArchivedView && (
-                    <td className="font-mono text-[11px] text-rose-800 font-bold">
-                      {emp.endDate || '-'}
+              employees.map((emp) => {
+                const empShift = getEmployeeShift(emp.workStartTime);
+
+                return (
+                  <tr key={emp.id} className="hover:bg-[#E8EEF7]">
+                    <td className="font-mono font-bold">{emp.employeeNo}</td>
+                    <td className="font-bold text-[#0A246A]">
+                      <Link
+                        href={`/employees/${emp.id}`}
+                        className="hover:underline flex items-center gap-1"
+                      >
+                        <span>{emp.name}</span>
+                      </Link>
                     </td>
-                  )}
-                  <td>
-                    <Badge variant={emp.status === 'ACTIVE' ? 'active' : 'rejected'}>
-                      {emp.status === 'ACTIVE' ? 'نشط' : 'أرشيف'}
-                    </Badge>
-                  </td>
-                  <td className="text-center whitespace-nowrap">
-                    <EmployeeTableActions
-                      employee={emp}
-                      userRole={user.role}
-                      updateEmployeeAction={handleUpdateEmployee}
-                    />
-                  </td>
-                </tr>
-              ))
+                    <td className="text-slate-700">{emp.department}</td>
+                    <td className="text-slate-700">{emp.jobTitle}</td>
+                    <td>
+                      <span
+                        className={`inline-block px-1.5 py-0.5 text-[10px] font-bold rounded border ${
+                          emp.employmentType === 'DAILY_WORKER'
+                            ? 'bg-amber-100 text-amber-900 border-amber-400'
+                            : emp.employmentType === 'PROBATIONARY'
+                            ? 'bg-blue-100 text-blue-900 border-blue-400'
+                            : 'bg-emerald-100 text-emerald-900 border-emerald-400'
+                        }`}
+                      >
+                        {emp.employmentType === 'DAILY_WORKER'
+                          ? 'مياومة'
+                          : emp.employmentType === 'PROBATIONARY'
+                          ? 'تجريبي'
+                          : 'مثبت'}
+                      </span>
+                    </td>
+                    <td>
+                      <span
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold rounded border ${empShift.badgeBg} ${empShift.badgeText} ${empShift.badgeBorder} whitespace-nowrap`}
+                        title={`ساعات العمل: ${emp.workStartTime ? emp.workStartTime.slice(0, 5) : '08:00'} - ${emp.workEndTime ? emp.workEndTime.slice(0, 5) : (empShift.code === 'EVENING' ? '01:00' : '16:30')}`}
+                      >
+                        <span>{empShift.icon}</span>
+                        <span>{empShift.shortName}</span>
+                      </span>
+                    </td>
+                    <td>
+                      {emp.socialSecurityRegistered ? (
+                        <div className="text-[11px] text-emerald-800 font-bold flex items-center gap-1">
+                          <span>✓ مسجل</span>
+                          {emp.socialSecurityRegistrationDate && (
+                            <span className="text-[10px] text-slate-500 font-mono font-normal">
+                              ({emp.socialSecurityRegistrationDate})
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-400">غير مسجل</span>
+                      )}
+                    </td>
+                    <td className="font-mono text-[11px]">{emp.startDate}</td>
+                    {isArchivedView && (
+                      <td className="font-mono text-[11px] text-rose-800 font-bold">
+                        {emp.endDate || '-'}
+                      </td>
+                    )}
+                    <td>
+                      <Badge variant={emp.status === 'ACTIVE' ? 'active' : 'rejected'}>
+                        {emp.status === 'ACTIVE' ? 'نشط' : 'أرشيف'}
+                      </Badge>
+                    </td>
+                    <td className="text-center whitespace-nowrap">
+                      <EmployeeTableActions
+                        employee={emp}
+                        userRole={user.role}
+                        updateEmployeeAction={handleUpdateEmployee}
+                      />
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

@@ -379,10 +379,49 @@ export function EditEmployeeModal({
             </div>
           </fieldset>
 
-          {/* Group 4: Working Hours */}
-          <fieldset className="border border-[#808080] p-2.5 bg-white">
-            <legend className="px-1 text-black font-bold">أوقات الدوام المخصصة</legend>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {/* Group 4: Working Hours & Shift Selection */}
+          <fieldset className="border border-[#808080] p-2.5 bg-white space-y-2">
+            <legend className="px-1 text-black font-bold">الوردية ومواعيد الدوام المعتمدة</legend>
+
+            {/* Quick Shift Selection Buttons */}
+            <div>
+              <label className="block text-[11px] font-bold text-black mb-1">تحديد الوردية:</label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWorkStartTime('08:00');
+                    setWorkEndTime('16:30');
+                    setBreakMinutes('60');
+                  }}
+                  className={`px-3 py-1 text-xs font-bold rounded border flex items-center gap-1.5 transition-none ${
+                    (workStartTime === '08:00' || !workStartTime) && (workEndTime === '16:30' || workEndTime === '17:00')
+                      ? 'bg-amber-600 text-white border-amber-700 shadow-inner'
+                      : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                  }`}
+                >
+                  <span>☀️ الوردية الصباحية (08:00 - 16:30)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWorkStartTime('16:30');
+                    setWorkEndTime('01:00');
+                    setBreakMinutes('60');
+                  }}
+                  className={`px-3 py-1 text-xs font-bold rounded border flex items-center gap-1.5 transition-none ${
+                    workStartTime === '16:30' && workEndTime === '01:00'
+                      ? 'bg-indigo-700 text-white border-indigo-800 shadow-inner'
+                      : 'bg-indigo-50 text-indigo-900 border-indigo-300 hover:bg-indigo-100'
+                  }`}
+                >
+                  <span>🌙 الوردية المسائية (16:30 - 01:00)</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-[#808080]/30">
               <div>
                 <label className="block text-black font-bold mb-0.5">وقت بدء الدوام</label>
                 <input

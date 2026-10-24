@@ -223,12 +223,25 @@ export default async function EmployeeDetailPage({
             ◄ عودة
           </Link>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-bold text-black">{employee.name}</span>
               <span className="font-mono text-xs font-bold text-[#0A246A]">({employee.employeeNo})</span>
               <Badge variant={employee.status === 'ACTIVE' ? 'active' : 'rejected'}>
                 {employee.status === 'ACTIVE' ? 'نشط' : 'منتهي'}
               </Badge>
+              {(() => {
+                const { getEmployeeShift } = require('@/lib/utils/shift');
+                const empShift = getEmployeeShift(employee.workStartTime);
+                return (
+                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold rounded border ${empShift.badgeBg} ${empShift.badgeText} ${empShift.badgeBorder}`}>
+                    <span>{empShift.icon}</span>
+                    <span>{empShift.name}</span>
+                    <span className="font-mono text-[10px] opacity-75">
+                      ({employee.workStartTime ? employee.workStartTime.slice(0, 5) : '08:00'} - {employee.workEndTime ? employee.workEndTime.slice(0, 5) : (empShift.code === 'EVENING' ? '01:00' : '16:30')})
+                    </span>
+                  </span>
+                );
+              })()}
             </div>
             <div className="text-[11px] text-[#505050]">
               القسم: {employee.department} | المسمى: {employee.jobTitle}

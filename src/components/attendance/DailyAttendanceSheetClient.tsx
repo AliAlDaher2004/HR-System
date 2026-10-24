@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui';
 import { formatDurationArabic } from '@/lib/utils/time';
+import { getEmployeeShift, getEmployeeShiftCode } from '@/lib/utils/shift';
 
 interface EmployeeAttendanceRow {
   employee: {
@@ -70,6 +71,7 @@ export function DailyAttendanceSheetClient({
   const router = useRouter();
   const [selectedDate, setSelectedDate] = useState(initialDate);
   const [filterDept, setFilterDept] = useState('');
+  const [filterShift, setFilterShift] = useState<'ALL' | 'MORNING' | 'EVENING'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [isPending, startTransition] = useTransition();
 
@@ -241,6 +243,10 @@ export function DailyAttendanceSheetClient({
     });
   }
 
+  // Shift counts (respects historical shift scheduledIn for past days, falls back to employee workStartTime)
+  const morningCount = rows.filter((r) => getEmployeeShiftCode(r.scheduledIn || r.employee.workStartTime) === 'MORNING').length;
+  const eveningCount = rows.filter((r) => getEmployeeShiftCode(r.scheduledIn || r.employee.workStartTime) === 'EVENING').length;
+
   // Filter rows
   const filteredRows = rows.filter((r) => {
     const matchDept = !filterDept || r.employee.department === filterDept;
@@ -248,17 +254,19 @@ export function DailyAttendanceSheetClient({
       !searchQuery ||
       r.employee.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       r.employee.employeeNo.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchDept && matchSearch;
+    const empShiftCode = getEmployeeShiftCode(r.scheduledIn || r.employee.workStartTime);
+    const matchShift = filterShift === 'ALL' || empShiftCode === filterShift;
+    return matchDept && matchSearch && matchShift;
   });
 
   // Calculate statistics
-  const totalCount = rows.length;
-  const presentCount = rows.filter((r) => r.attendanceType === 'PRESENT' && r.lateMinutes === 0).length;
-  const lateCount = rows.filter((r) => r.attendanceType === 'PRESENT' && r.lateMinutes > 0).length;
-  const excusedCount = rows.filter((r) => r.attendanceType === 'EXCUSED_ABSENCE').length;
-  const unexcusedCount = rows.filter((r) => r.attendanceType === 'UNEXCUSED_ABSENCE' || r.attendanceType === 'ABSENT').length;
-  const earlyDepartureCount = rows.filter((r) => r.earlyDeparture).length;
-  const unmarkedCount = rows.filter((r) => !r.isMarked).length;
+  const totalCount = filteredRows.length;
+  const presentCount = filteredRows.filter((r) => r.attendanceType === 'PRESENT' && r.lateMinutes === 0).length;
+  const lateCount = filteredRows.filter((r) => r.attendanceType === 'PRESENT' && r.lateMinutes > 0).length;
+  const excusedCount = filteredRows.filter((r) => r.attendanceType === 'EXCUSED_ABSENCE').length;
+  const unexcusedCount = filteredRows.filter((r) => r.attendanceType === 'UNEXCUSED_ABSENCE' || r.attendanceType === 'ABSENT').length;
+  const earlyDepartureCount = filteredRows.filter((r) => r.earlyDeparture).length;
+  const unmarkedCount = filteredRows.filter((r) => !r.isMarked).length;
 
   return (
     <div className="space-y-3">
@@ -345,6 +353,78 @@ export function DailyAttendanceSheetClient({
         </div>
       </div>
 
+      {/* Shift Toggle Buttons: Morning vs Evening distinction */}
+      <div className="win-raised p-2 bg-[#F5F3EC] flex flex-wrap items-center justify-between gap-2 border border-[#808080]">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-bold text-black flex items-center gap-1">
+            <span>⏱️</span>
+            <span>تصفية الوردية:</span>
+          </span>
+          <div className="inline-flex rounded border border-[#808080] bg-[#D4D0C8] p-0.5 gap-1">
+            <button
+              type="button"
+              onClick={() => setFilterShift('ALL')}
+              className={`px-3 py-1 text-xs font-bold rounded flex items-center gap-1.5 transition-none ${
+                filterShift === 'ALL'
+                  ? 'bg-[#0A246A] text-white shadow-inner'
+                  : 'bg-[#ECE9D8] text-slate-800 hover:bg-[#F0EEE5]'
+              }`}
+            >
+              <span>🔘</span>
+              <span>جميع الورديات</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${filterShift === 'ALL' ? 'bg-blue-900 text-white' : 'bg-white text-slate-700 border'}`}>
+                {rows.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFilterShift('MORNING')}
+              className={`px-3 py-1 text-xs font-bold rounded flex items-center gap-1.5 transition-none ${
+                filterShift === 'MORNING'
+                  ? 'bg-amber-600 text-white shadow-inner'
+                  : 'bg-[#ECE9D8] text-amber-950 hover:bg-[#F0EEE5]'
+              }`}
+            >
+              <span>☀️</span>
+              <span>الوردية الصباحية</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${filterShift === 'MORNING' ? 'bg-amber-800 text-white' : 'bg-amber-100 text-amber-900 border border-amber-300'}`}>
+                {morningCount}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFilterShift('EVENING')}
+              className={`px-3 py-1 text-xs font-bold rounded flex items-center gap-1.5 transition-none ${
+                filterShift === 'EVENING'
+                  ? 'bg-indigo-700 text-white shadow-inner'
+                  : 'bg-[#ECE9D8] text-indigo-950 hover:bg-[#F0EEE5]'
+              }`}
+            >
+              <span>🌙</span>
+              <span>الوردية المسائية</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${filterShift === 'EVENING' ? 'bg-indigo-900 text-white' : 'bg-indigo-100 text-indigo-900 border border-indigo-300'}`}>
+                {eveningCount}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Shift Distribution Summary Indicator */}
+        <div className="flex items-center gap-2 text-xs flex-wrap">
+          <span className="text-[11px] text-slate-600 font-semibold">إجمالي الكوادر:</span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-900 text-[11px] font-bold">
+            <span>☀️ صباحي (08:00):</span>
+            <span className="font-mono">{morningCount}</span>
+          </span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-indigo-300 bg-indigo-50 text-indigo-900 text-[11px] font-bold">
+            <span>🌙 مسائي (16:30):</span>
+            <span className="font-mono">{eveningCount}</span>
+          </span>
+        </div>
+      </div>
+
       {/* KPI Stats Bar (Classic sunken tiles) */}
       <div className="grid grid-cols-2 sm:grid-cols-7 gap-1 text-xs select-none">
         <div className="win-sunken bg-white p-1 text-center">
@@ -386,7 +466,7 @@ export function DailyAttendanceSheetClient({
               <th>اسم الموظف</th>
               <th className="w-20">النوع</th>
               <th className="w-24">القسم</th>
-              <th className="w-24">الدوام المجدول</th>
+              <th className="w-36">الوردية والدوام المجدول</th>
               <th className="w-40">حالة الحضور والغياب</th>
               <th className="w-24 font-bold">ساعات العمل</th>
               <th className="text-center whitespace-nowrap min-w-[340px]">تسجيل الحضور والغياب السريع</th>
@@ -405,6 +485,7 @@ export function DailyAttendanceSheetClient({
                 const emp = row.employee;
                 const att = row.attendance;
                 const isLocked = row.isLocked;
+                const empShift = getEmployeeShift(row.scheduledIn || emp.workStartTime);
 
                 return (
                   <tr key={emp.id} className="hover:bg-[#E8EEF7]">
@@ -430,8 +511,18 @@ export function DailyAttendanceSheetClient({
                       </span>
                     </td>
                     <td className="text-slate-700">{emp.department}</td>
-                    <td className="font-mono text-[11px] text-slate-600">
-                      {row.scheduledIn.slice(0, 5)} - {row.scheduledOut.slice(0, 5)}
+                    <td className="whitespace-nowrap">
+                      <div className="flex flex-col gap-0.5">
+                        <span
+                          className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold rounded border ${empShift.badgeBg} ${empShift.badgeText} ${empShift.badgeBorder} w-fit`}
+                        >
+                          <span>{empShift.icon}</span>
+                          <span>{empShift.name}</span>
+                        </span>
+                        <span className="font-mono text-[11px] text-slate-600">
+                          {row.scheduledIn.slice(0, 5)} - {row.scheduledOut.slice(0, 5)}
+                        </span>
+                      </div>
                     </td>
                     <td>
                       {!row.isMarked ? (
@@ -499,13 +590,22 @@ export function DailyAttendanceSheetClient({
                             type="button"
                             disabled={isPending}
                             onClick={() => {
+                              const isEvening = empShift.code === 'EVENING';
                               const defaultArrival = new Date().toTimeString().slice(0, 5);
+                              const schedStart = row.scheduledIn.slice(0, 5);
+                              let arrivalSuggestion = '08:15';
+                              if (isEvening) {
+                                arrivalSuggestion = defaultArrival > '16:30' ? defaultArrival : '16:45';
+                              } else {
+                                arrivalSuggestion = defaultArrival > schedStart ? defaultArrival : '08:15';
+                              }
+
                               setLateModal({
                                 open: true,
                                 employeeId: emp.id,
                                 employeeName: emp.name,
-                                scheduledIn: row.scheduledIn.slice(0, 5),
-                                arrivalTime: defaultArrival > row.scheduledIn.slice(0, 5) ? defaultArrival : '08:30',
+                                scheduledIn: schedStart,
+                                arrivalTime: arrivalSuggestion,
                               });
                             }}
                             className={`win-btn text-[10px] px-1.5 py-0.5 font-bold whitespace-nowrap ${

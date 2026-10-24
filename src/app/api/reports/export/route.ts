@@ -142,6 +142,58 @@ export async function GET(req: NextRequest) {
       }
       csvData = convertToCSV(headers, rows);
       fileName = `leave_balances.csv`;
+    } else if (type === 'employees') {
+      const shiftParam = searchParams.get('shift');
+      const deptParam = searchParams.get('department');
+      const empTypeParam = searchParams.get('employmentType');
+
+      const all = await getEmployees(user);
+      let list = all.filter((e) => e.status === 'ACTIVE');
+
+      const { getEmployeeShiftCode, getEmployeeShift } = await import('@/lib/utils/shift');
+      if (shiftParam === 'MORNING') {
+        list = list.filter((e) => getEmployeeShiftCode(e.workStartTime) === 'MORNING');
+      } else if (shiftParam === 'EVENING') {
+        list = list.filter((e) => getEmployeeShiftCode(e.workStartTime) === 'EVENING');
+      }
+      if (deptParam) {
+        list = list.filter((e) => e.department === deptParam);
+      }
+      if (empTypeParam) {
+        list = list.filter((e) => e.employmentType === empTypeParam);
+      }
+
+      const headers = [
+        'الرقم الوظيفي',
+        'اسم الموظف',
+        'القسم',
+        'المسمى الوظيفي',
+        'الوردية',
+        'وقت بدء الدوام',
+        'وقت نهاية الدوام',
+        'نوع التوظيف',
+        'الضمان الاجتماعي',
+        'رقم الهاتف',
+        'تاريخ المباشرة',
+      ];
+      const rows = list.map((e) => {
+        const s = getEmployeeShift(e.workStartTime);
+        return [
+          e.employeeNo,
+          e.name,
+          e.department,
+          e.jobTitle,
+          s.name,
+          e.workStartTime ? e.workStartTime.slice(0, 5) : '08:00',
+          e.workEndTime ? e.workEndTime.slice(0, 5) : (s.code === 'EVENING' ? '01:00' : '16:30'),
+          e.employmentType === 'DAILY_WORKER' ? 'مياومة' : e.employmentType === 'PROBATIONARY' ? 'تجريبي' : 'مثبت',
+          e.socialSecurityRegistered ? 'مسجل' : 'غير مسجل',
+          e.phone || '',
+          e.startDate,
+        ];
+      });
+      csvData = convertToCSV(headers, rows);
+      fileName = `active_employees_${shiftParam ? shiftParam.toLowerCase() : 'all'}_${month}.csv`;
     } else {
       return new NextResponse('نوع التقرير غير محدد أو غير صالح', { status: 400 });
     }

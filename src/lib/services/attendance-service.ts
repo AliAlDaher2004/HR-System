@@ -215,9 +215,13 @@ export async function getDailyAttendanceSheet(actor: UserSession, workDate: stri
 
   return allEmployees.map((emp: any) => {
     const att: any = attendanceMap.get(emp.id);
-    const schedIn = emp.workStartTime || defaultStart;
-    const schedOut = emp.workEndTime || defaultEnd;
-    const breakMins = emp.breakMinutes ?? defaultBreak;
+    const schedIn = att?.scheduledIn || emp.workStartTime || defaultStart;
+    let schedOut = emp.workEndTime || defaultEnd;
+    if (att?.scheduledIn) {
+      const histShift = detectShift(att.scheduledIn.slice(0, 5), att.scheduledIn, null, settings);
+      schedOut = histShift.schedEnd;
+    }
+    const breakMins = att?.breakMinutes ?? emp.breakMinutes ?? defaultBreak;
 
     return {
       employee: emp,
