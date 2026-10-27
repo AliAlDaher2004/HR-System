@@ -21,6 +21,8 @@ import {
   isAttendanceLocked,
   createOrUpdateAttendance,
   detectShift,
+  bulkMarkPresentForDate,
+  approveAllDailyAttendance,
 } from '../src/lib/services/attendance-service';
 import {
   createPayrollDraft,
@@ -35,7 +37,7 @@ import {
 } from '../src/lib/services/payroll-service';
 import { getBatchPayslipData } from '../src/lib/services/payslip-service';
 import { UserSession, AuthorizationError } from '../src/lib/auth/rbac';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 
 describe('HR & Payroll Production Business Rules & Specification Test Suite', () => {
   const adminUser: UserSession = {
@@ -650,6 +652,76 @@ describe('HR & Payroll Production Business Rules & Specification Test Suite', ()
       expect(att.attendanceType).toBe('UNEXCUSED_ABSENCE');
       expect(Number(att.unpaidDays)).toBe(2.0); // 2 days penalty deduction for unexcused absence
       expect(att.notes).toContain('خصم يومين');
+    });
+
+    it('27. Bulk mark present saves on-time attendance for all active unmarked employees on a date', async () => {
+      const emp1 = await createEmployee(adminUser, {
+        employeeNo: 'BULK-001',
+        name: 'Bulk Employee 1',
+        department: 'Operations',
+        jobTitle: 'Clerk',
+        startDate: '2026-06-01',
+      });
+      const emp2 = await createEmployee(adminUser, {
+        employeeNo: 'BULK-002',
+        name: 'Bulk Employee 2',
+        department: 'Operations',
+        jobTitle: 'Clerk',
+        startDate: '2026-06-01',
+      });
+
+      // Pre-mark emp1 as absent
+      await markAbsent(adminUser, emp1.id, '2026-06-15', 'EXCUSED_ABSENCE', 'عذر مسبق');
+
+      // Run bulk mark present (onlyUnmarked = true)
+      const res = await bulkMarkPresentForDate(adminUser, '2026-06-15', true);
+
+      expect(res.markedCount).toBeGreaterThanOrEqual(1);
+
+      // Verify emp2 was marked present
+      const db = getDb();
+      const [emp2Att] = await db.select().from(schema.attendance).where(
+        and(
+          eq(schema.attendance.employeeId, emp2.id),
+          eq(schema.attendance.workDate, '2026-06-15')
+        )
+      );
+      expect(emp2Att).toBeDefined();
+      expect(emp2Att.attendanceType).toBe('PRESENT');
+      expect(emp2Att.lateMinutes).toBe(0);
+
+      // Verify emp1 remains excused absence (was not overwritten)
+      const [emp1Att] = await db.select().from(schema.attendance).where(
+        and(
+          eq(schema.attendance.employeeId, emp1.id),
+          eq(schema.attendance.workDate, '2026-06-15')
+        )
+      );
+      expect(emp1Att.attendanceType).toBe('EXCUSED_ABSENCE');
+    });
+
+    it('28. Approve all daily attendance approves all completed draft records for the date', async () => {
+      const emp = await createEmployee(adminUser, {
+        employeeNo: 'APPR-001',
+        name: 'Approve Employee 1',
+        department: 'Logistics',
+        jobTitle: 'Driver',
+        startDate: '2026-06-01',
+      });
+
+      await markPresent(adminUser, emp.id, '2026-06-16');
+
+      const res = await approveAllDailyAttendance(adminUser, '2026-06-16');
+      expect(res.approvedCount).toBeGreaterThanOrEqual(1);
+
+      const db = getDb();
+      const [att] = await db.select().from(schema.attendance).where(
+        and(
+          eq(schema.attendance.employeeId, emp.id),
+          eq(schema.attendance.workDate, '2026-06-16')
+        )
+      );
+      expect(att.status).toBe('APPROVED');
     });
   });
 

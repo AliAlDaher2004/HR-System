@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useTransition } from 'react';
+import React, { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui';
@@ -57,6 +58,9 @@ interface DailyAttendanceSheetClientProps {
   ) => Promise<void>;
   recordEarlyDepartureAction: (attendanceId: string, clockOutTime: string, reason: string) => Promise<void>;
   updateOvertimeAction?: (employeeId: string, date: string, otHours: number) => Promise<void>;
+  bulkMarkPresentAction?: (date: string, onlyUnmarked: boolean) => Promise<{ markedCount: number; skippedCount: number; total: number }>;
+  approveAllDailyAction?: (date: string) => Promise<{ approvedCount: number }>;
+  canApprove?: boolean;
 }
 
 export function DailyAttendanceSheetClient({
@@ -67,13 +71,27 @@ export function DailyAttendanceSheetClient({
   markAbsentAction,
   recordEarlyDepartureAction,
   updateOvertimeAction,
+  bulkMarkPresentAction,
+  approveAllDailyAction,
+  canApprove = false,
 }: DailyAttendanceSheetClientProps) {
   const router = useRouter();
   const [selectedDate, setSelectedDate] = useState(initialDate);
   const [filterDept, setFilterDept] = useState('');
   const [filterShift, setFilterShift] = useState<'ALL' | 'MORNING' | 'EVENING'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isPending, startTransition] = useTransition();
+
+  // Per-employee pending set so clicking one employee never blocks or dims other employees
+  const [pendingEmpIds, setPendingEmpIds] = useState<Set<string>>(new Set());
+  const [isSavingAll, setIsSavingAll] = useState(false);
+  const [isModalPending, setIsModalPending] = useState(false);
+
+  // Optimistic display rows for instantaneous 0ms UI feedback
+  const [displayRows, setDisplayRows] = useState(rows);
+
+  React.useEffect(() => {
+    setDisplayRows(rows);
+  }, [rows]);
 
   // Modal States
   const [lateModal, setLateModal] = useState<{
@@ -157,98 +175,308 @@ export function DailyAttendanceSheetClient({
   }
 
   async function onMarkPresent(empId: string) {
-    setFeedback(null);
-    startTransition(async () => {
-      try {
-        await markPresentAction(empId, selectedDate);
-        setFeedback({ type: 'success', message: 'تم تسجيل الحضور في الموعد بنجاح' });
-        router.refresh();
-      } catch (err: any) {
-        setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء تسجيل الحضور' });
-      }
-    });
+    const prev = displayRows;
+
+    // Instant optimistic update (0ms UI latency)
+    setDisplayRows((current) =>
+      current.map((r) =>
+        r.employee.id === empId
+          ? {
+              ...r,
+              isMarked: true,
+              attendanceType: 'PRESENT',
+              lateMinutes: 0,
+            }
+          : r
+      )
+    );
+
+    setPendingEmpIds((prevSet) => new Set(prevSet).add(empId));
+    try {
+      await markPresentAction(empId, selectedDate);
+    } catch (err: any) {
+      setDisplayRows(prev);
+      setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء تسجيل الحضور' });
+    } finally {
+      setPendingEmpIds((prevSet) => {
+        const nextSet = new Set(prevSet);
+        nextSet.delete(empId);
+        return nextSet;
+      });
+    }
   }
 
   async function onConfirmLate() {
     setFeedback(null);
-    startTransition(async () => {
-      try {
-        await markPresentAction(lateModal.employeeId, selectedDate, lateModal.arrivalTime);
-        setLateModal((prev) => ({ ...prev, open: false }));
-        setFeedback({ type: 'success', message: 'تم تسجيل التأخير بدقة واحتساب الدقائق بنجاح' });
-        router.refresh();
-      } catch (err: any) {
-        setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء تسجيل التأخير' });
-      }
-    });
+    const empId = lateModal.employeeId;
+    const prev = displayRows;
+    const schedParts = lateModal.scheduledIn.split(':');
+    const schedMins = (parseInt(schedParts[0], 10) || 0) * 60 + (parseInt(schedParts[1], 10) || 0);
+    const arrParts = lateModal.arrivalTime.split(':');
+    const arrMins = (parseInt(arrParts[0], 10) || 0) * 60 + (parseInt(arrParts[1], 10) || 0);
+    const diff = Math.max(0, arrMins - schedMins);
+
+    // Instant optimistic update
+    setDisplayRows((current) =>
+      current.map((r) =>
+        r.employee.id === empId
+          ? {
+              ...r,
+              isMarked: true,
+              attendanceType: 'PRESENT',
+              lateMinutes: diff,
+            }
+          : r
+      )
+    );
+    setLateModal((m) => ({ ...m, open: false }));
+
+    setIsModalPending(true);
+    setPendingEmpIds((prevSet) => new Set(prevSet).add(empId));
+    try {
+      await markPresentAction(empId, selectedDate, lateModal.arrivalTime);
+      setFeedback({ type: 'success', message: 'تم تسجيل التأخير بدقة واحتساب الدقائق بنجاح' });
+    } catch (err: any) {
+      setDisplayRows(prev);
+      setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء تسجيل التأخير' });
+    } finally {
+      setIsModalPending(false);
+      setPendingEmpIds((prevSet) => {
+        const nextSet = new Set(prevSet);
+        nextSet.delete(empId);
+        return nextSet;
+      });
+    }
   }
 
   async function onMarkUnexcusedAbsent(empId: string) {
     setFeedback(null);
-    startTransition(async () => {
-      try {
-        await markAbsentAction(empId, selectedDate, 'UNEXCUSED_ABSENCE');
-        setFeedback({ type: 'success', message: 'تم تسجيل غياب بدون عذر وتطبيق عقوبة خصم يومين بنجاح' });
-        router.refresh();
-      } catch (err: any) {
-        setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء تسجيل الغياب' });
-      }
-    });
+    const prev = displayRows;
+
+    // Instant optimistic update
+    setDisplayRows((current) =>
+      current.map((r) =>
+        r.employee.id === empId
+          ? {
+              ...r,
+              isMarked: true,
+              attendanceType: 'UNEXCUSED_ABSENCE',
+              lateMinutes: 0,
+            }
+          : r
+      )
+    );
+
+    setPendingEmpIds((prevSet) => new Set(prevSet).add(empId));
+    try {
+      await markAbsentAction(empId, selectedDate, 'UNEXCUSED_ABSENCE');
+      setFeedback({ type: 'success', message: 'تم تسجيل غياب بدون عذر وتطبيق عقوبة خصم يومين بنجاح' });
+    } catch (err: any) {
+      setDisplayRows(prev);
+      setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء تسجيل الغياب' });
+    } finally {
+      setPendingEmpIds((prevSet) => {
+        const nextSet = new Set(prevSet);
+        nextSet.delete(empId);
+        return nextSet;
+      });
+    }
   }
 
   async function onConfirmExcusedAbsent() {
     setFeedback(null);
-    startTransition(async () => {
-      try {
-        await markAbsentAction(excusedModal.employeeId, selectedDate, 'EXCUSED_ABSENCE', excusedModal.reason);
-        setExcusedModal((prev) => ({ ...prev, open: false }));
-        setFeedback({ type: 'success', message: 'تم تسجيل غياب بعذر واحتساب خصم يوم واحد بنجاح' });
-        router.refresh();
-      } catch (err: any) {
-        setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء تسجيل الغياب' });
-      }
-    });
+    const empId = excusedModal.employeeId;
+    const prev = displayRows;
+
+    // Instant optimistic update
+    setDisplayRows((current) =>
+      current.map((r) =>
+        r.employee.id === empId
+          ? {
+              ...r,
+              isMarked: true,
+              attendanceType: 'EXCUSED_ABSENCE',
+              lateMinutes: 0,
+            }
+          : r
+      )
+    );
+    setExcusedModal((m) => ({ ...m, open: false }));
+
+    setIsModalPending(true);
+    setPendingEmpIds((prevSet) => new Set(prevSet).add(empId));
+    try {
+      await markAbsentAction(empId, selectedDate, 'EXCUSED_ABSENCE', excusedModal.reason);
+      setFeedback({ type: 'success', message: 'تم تسجيل غياب بعذر واحتساب خصم يوم واحد بنجاح' });
+    } catch (err: any) {
+      setDisplayRows(prev);
+      setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء تسجيل الغياب' });
+    } finally {
+      setIsModalPending(false);
+      setPendingEmpIds((prevSet) => {
+        const nextSet = new Set(prevSet);
+        nextSet.delete(empId);
+        return nextSet;
+      });
+    }
   }
 
   async function onConfirmEarlyDeparture() {
     setFeedback(null);
-    startTransition(async () => {
-      try {
-        await recordEarlyDepartureAction(
-          earlyDepartureModal.attendanceId,
-          earlyDepartureModal.departureTime,
-          earlyDepartureModal.reason
-        );
-        setEarlyDepartureModal((prev) => ({ ...prev, open: false }));
-        setFeedback({ type: 'success', message: 'تم تسجيل المغادرة المبكرة واحتساب الخصم الدقيق بنجاح' });
-        router.refresh();
-      } catch (err: any) {
-        setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء تسجيل المغادرة' });
-      }
-    });
+    const prev = displayRows;
+    const schedParts = earlyDepartureModal.scheduledOut.split(':');
+    const schedMins = (parseInt(schedParts[0], 10) || 0) * 60 + (parseInt(schedParts[1], 10) || 0);
+    const depParts = earlyDepartureModal.departureTime.split(':');
+    const depMins = (parseInt(depParts[0], 10) || 0) * 60 + (parseInt(depParts[1], 10) || 0);
+    const diff = Math.max(0, schedMins - depMins);
+
+    // Instant optimistic update
+    setDisplayRows((current) =>
+      current.map((r) =>
+        r.attendance?.id === earlyDepartureModal.attendanceId
+          ? {
+              ...r,
+              earlyDeparture: true,
+              earlyDepartureMinutes: diff,
+            }
+          : r
+      )
+    );
+    setEarlyDepartureModal((m) => ({ ...m, open: false }));
+
+    setIsModalPending(true);
+    try {
+      await recordEarlyDepartureAction(
+        earlyDepartureModal.attendanceId,
+        earlyDepartureModal.departureTime,
+        earlyDepartureModal.reason
+      );
+      setFeedback({ type: 'success', message: 'تم تسجيل المغادرة المبكرة واحتساب الخصم الدقيق بنجاح' });
+    } catch (err: any) {
+      setDisplayRows(prev);
+      setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء تسجيل المغادرة' });
+    } finally {
+      setIsModalPending(false);
+    }
   }
 
   async function onConfirmOvertime() {
     if (!updateOvertimeAction) return;
     setFeedback(null);
-    startTransition(async () => {
-      try {
-        await updateOvertimeAction(otModal.employeeId, selectedDate, Number(otModal.otHours) || 0);
-        setOtModal((prev) => ({ ...prev, open: false }));
-        setFeedback({ type: 'success', message: `تم اعتمد ${otModal.otHours} ساعة عمل إضافي للموظف بنجاح` });
-        router.refresh();
-      } catch (err: any) {
-        setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء تسجيل العمل الإضافي' });
-      }
-    });
+    const empId = otModal.employeeId;
+    const prev = displayRows;
+
+    setDisplayRows((current) =>
+      current.map((r) =>
+        r.employee.id === empId
+          ? {
+              ...r,
+              attendance: r.attendance
+                ? { ...r.attendance, approvedOtHours: otModal.otHours }
+                : null,
+            }
+          : r
+      )
+    );
+    setOtModal((m) => ({ ...m, open: false }));
+
+    setIsModalPending(true);
+    setPendingEmpIds((prevSet) => new Set(prevSet).add(empId));
+    try {
+      await updateOvertimeAction(empId, selectedDate, Number(otModal.otHours) || 0);
+      setFeedback({ type: 'success', message: `تم اعتمد ${otModal.otHours} ساعة عمل إضافي للموظف بنجاح` });
+    } catch (err: any) {
+      setDisplayRows(prev);
+      setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء تسجيل العمل الإضافي' });
+    } finally {
+      setIsModalPending(false);
+      setPendingEmpIds((prevSet) => {
+        const nextSet = new Set(prevSet);
+        nextSet.delete(empId);
+        return nextSet;
+      });
+    }
   }
 
-  // Shift counts (respects historical shift scheduledIn for past days, falls back to employee workStartTime)
-  const morningCount = rows.filter((r) => getEmployeeShiftCode(r.scheduledIn || r.employee.workStartTime) === 'MORNING').length;
-  const eveningCount = rows.filter((r) => getEmployeeShiftCode(r.scheduledIn || r.employee.workStartTime) === 'EVENING').length;
+  async function onSaveAndTransferDailySheet() {
+    setFeedback(null);
+    setIsSavingAll(true);
+    try {
+      let additionalMarked = 0;
+      if (bulkMarkPresentAction && unmarkedCount > 0) {
+        const res = await bulkMarkPresentAction(selectedDate, true);
+        additionalMarked = res.markedCount;
+      }
+      setFeedback({
+        type: 'success',
+        message: `✓ تم بنجاح حفظ وترحيل سجل الحضور اليومي لتاريخ (${selectedDate}) ونقل البيانات إلى سجل الحضور الدائم والأرشيف.${
+          additionalMarked > 0 ? ` (تم تسجيل وترحيل ${additionalMarked} موظفاً إضافياً كحاضرين بالموعد).` : ''
+        }`,
+      });
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء حفظ وترحيل سجل الحضور' });
+    } finally {
+      setIsSavingAll(false);
+    }
+  }
+
+  async function onBulkMarkRemainingPresent() {
+    if (!bulkMarkPresentAction) return;
+    setFeedback(null);
+    const prev = displayRows;
+
+    // Instant optimistic update for all unmarked
+    setDisplayRows((current) =>
+      current.map((r) =>
+        !r.isMarked && !r.isLocked
+          ? {
+              ...r,
+              isMarked: true,
+              attendanceType: 'PRESENT',
+              lateMinutes: 0,
+            }
+          : r
+      )
+    );
+
+    setIsSavingAll(true);
+    try {
+      const res = await bulkMarkPresentAction(selectedDate, true);
+      setFeedback({
+        type: 'success',
+        message: `✓ تم تسجيل وترحيل حضور ${res.markedCount} موظفاً متبقياً كـ (حاضر في الموعد) وحفظهم بنجاح.`,
+      });
+    } catch (err: any) {
+      setDisplayRows(prev);
+      setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء تسجيل الحضور الجماعي' });
+    } finally {
+      setIsSavingAll(false);
+    }
+  }
+
+  async function onApproveAllDailyRecords() {
+    if (!approveAllDailyAction) return;
+    setFeedback(null);
+    setIsSavingAll(true);
+    try {
+      const res = await approveAllDailyAction(selectedDate);
+      setFeedback({
+        type: 'success',
+        message: `✓ تم بنجاح اعتماد وترحيل ${res.approvedCount} سجلاً مكتملاً لهذا اليوم.`,
+      });
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء اعتماد السجلات' });
+    } finally {
+      setIsSavingAll(false);
+    }
+  }
+
+  // Shift counts (calculated from optimistic displayRows)
+  const morningCount = displayRows.filter((r) => getEmployeeShiftCode(r.scheduledIn || r.employee.workStartTime) === 'MORNING').length;
+  const eveningCount = displayRows.filter((r) => getEmployeeShiftCode(r.scheduledIn || r.employee.workStartTime) === 'EVENING').length;
 
   // Filter rows
-  const filteredRows = rows.filter((r) => {
+  const filteredRows = displayRows.filter((r) => {
     const matchDept = !filterDept || r.employee.department === filterDept;
     const matchSearch =
       !searchQuery ||
@@ -259,7 +487,7 @@ export function DailyAttendanceSheetClient({
     return matchDept && matchSearch && matchShift;
   });
 
-  // Calculate statistics
+  // Calculate statistics from optimistic state
   const totalCount = filteredRows.length;
   const presentCount = filteredRows.filter((r) => r.attendanceType === 'PRESENT' && r.lateMinutes === 0).length;
   const lateCount = filteredRows.filter((r) => r.attendanceType === 'PRESENT' && r.lateMinutes > 0).length;
@@ -373,7 +601,7 @@ export function DailyAttendanceSheetClient({
               <span>🔘</span>
               <span>جميع الورديات</span>
               <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${filterShift === 'ALL' ? 'bg-blue-900 text-white' : 'bg-white text-slate-700 border'}`}>
-                {rows.length}
+                {displayRows.length}
               </span>
             </button>
 
@@ -410,18 +638,69 @@ export function DailyAttendanceSheetClient({
             </button>
           </div>
         </div>
+      </div>
 
-        {/* Quick Shift Distribution Summary Indicator */}
-        <div className="flex items-center gap-2 text-xs flex-wrap">
-          <span className="text-[11px] text-slate-600 font-semibold">إجمالي الكوادر:</span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-900 text-[11px] font-bold">
-            <span>☀️ صباحي (08:00):</span>
-            <span className="font-mono">{morningCount}</span>
-          </span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-indigo-300 bg-indigo-50 text-indigo-900 text-[11px] font-bold">
-            <span>🌙 مسائي (16:30):</span>
-            <span className="font-mono">{eveningCount}</span>
-          </span>
+      {/* Primary Action Bar: Save & Transfer to Permanent Record, Bulk Attendance, Print */}
+      <div className="win-raised p-2 bg-[#D4D0C8] flex flex-wrap items-center justify-between gap-2 border border-[#808080]">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Primary Save Button */}
+          <button
+            type="button"
+            disabled={isSavingAll}
+            onClick={onSaveAndTransferDailySheet}
+            className="win-btn px-4 py-1.5 font-bold text-xs bg-[#0A246A] text-white flex items-center gap-1.5 shadow cursor-pointer disabled:opacity-60"
+            title="حفظ وترحيل سجل الحضور اليومي الحالي واعتماده في قاعدة البيانات والأرشيف الدائم"
+          >
+            <span>💾</span>
+            <span>{isSavingAll ? 'جاري الحفظ والترحيل...' : 'حفظ وترحيل سجل الحضور اليومي'}</span>
+          </button>
+
+          {/* Quick Mark Remaining as Present */}
+          {unmarkedCount > 0 && (
+            <button
+              type="button"
+              disabled={isSavingAll}
+              onClick={onBulkMarkRemainingPresent}
+              className="win-btn px-3 py-1.5 font-bold text-xs text-emerald-950 bg-emerald-100 flex items-center gap-1.5 border border-emerald-400 cursor-pointer disabled:opacity-60"
+              title="تسجيل جميع الموظفين غير المسجلين كـ (حاضر في الموعد) دفعة واحدة وترحيلهم"
+            >
+              <span>⚡</span>
+              <span>{isSavingAll ? 'جاري التسجيل...' : `تسجيل المتبقين (${unmarkedCount}) كحاضرين`}</span>
+            </button>
+          )}
+
+          {/* Approve All Button if HR/Admin */}
+          {canApprove && (
+            <button
+              type="button"
+              disabled={isSavingAll}
+              onClick={onApproveAllDailyRecords}
+              className="win-btn px-3 py-1.5 font-bold text-xs text-blue-900 flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+              title="اعتماد كافة سجلات الحضور المحفوظة لهذا اليوم"
+            >
+              <span>✓</span>
+              <span>{isSavingAll ? 'جاري الاعتماد...' : 'اعتماد سجلات اليوم'}</span>
+            </button>
+          )}
+
+          {/* Saved status indicator */}
+          <div className="flex items-center gap-1 px-2 py-1 rounded bg-white border border-[#808080] text-[11px] font-semibold">
+            <span className={unmarkedCount === 0 ? 'text-emerald-700 font-bold' : 'text-amber-800'}>
+              {unmarkedCount === 0 ? '● السجل مكتمل ومحفوظ' : `○ متبقي ${unmarkedCount} غير مسجل`}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Print Button */}
+          <Link
+            href={`/attendance/print?date=${selectedDate}`}
+            className="win-btn px-3.5 py-1.5 font-bold text-xs text-[#0A246A] flex items-center gap-1.5"
+            title="فتح سجل الحضور اليومي بنسخة رسمية جاهزة للطباعة والتوقيع A4 / PDF"
+          >
+            <span>🖨️</span>
+            <span>طباعة سجل اليوم (A4 / PDF)</span>
+          </Link>
         </div>
       </div>
 
@@ -486,6 +765,7 @@ export function DailyAttendanceSheetClient({
                 const att = row.attendance;
                 const isLocked = row.isLocked;
                 const empShift = getEmployeeShift(row.scheduledIn || emp.workStartTime);
+                const isEmpPending = pendingEmpIds.has(emp.id) || isSavingAll;
 
                 return (
                   <tr key={emp.id} className="hover:bg-[#E8EEF7]">
@@ -573,7 +853,7 @@ export function DailyAttendanceSheetClient({
                           {/* Green: حضور */}
                           <button
                             type="button"
-                            disabled={isPending}
+                            disabled={isEmpPending}
                             onClick={() => onMarkPresent(emp.id)}
                             className={`win-btn text-[10px] px-1.5 py-0.5 font-bold whitespace-nowrap ${
                               row.attendanceType === 'PRESENT' && row.lateMinutes === 0
@@ -582,13 +862,13 @@ export function DailyAttendanceSheetClient({
                             }`}
                             title="حضور في موعد الدوام المحدد (0 تأخير)"
                           >
-                            ✓ حضور
+                            {pendingEmpIds.has(emp.id) ? '⏳...' : '✓ حضور'}
                           </button>
 
                           {/* Yellow/Orange: تأخير */}
                           <button
                             type="button"
-                            disabled={isPending}
+                            disabled={isEmpPending}
                             onClick={() => {
                               const isEvening = empShift.code === 'EVENING';
                               const defaultArrival = new Date().toTimeString().slice(0, 5);
@@ -621,7 +901,7 @@ export function DailyAttendanceSheetClient({
                           {/* Indigo: غياب بعذر */}
                           <button
                             type="button"
-                            disabled={isPending}
+                            disabled={isEmpPending}
                             onClick={() => {
                               setExcusedModal({
                                 open: true,
@@ -643,7 +923,7 @@ export function DailyAttendanceSheetClient({
                           {/* Red: غياب بدون عذر */}
                           <button
                             type="button"
-                            disabled={isPending}
+                            disabled={isEmpPending}
                             onClick={() => onMarkUnexcusedAbsent(emp.id)}
                             className={`win-btn text-[10px] px-1.5 py-0.5 font-bold whitespace-nowrap ${
                               row.attendanceType === 'UNEXCUSED_ABSENCE' || row.attendanceType === 'ABSENT'
@@ -658,7 +938,7 @@ export function DailyAttendanceSheetClient({
                           {/* Purple: عمل إضافي */}
                           <button
                             type="button"
-                            disabled={isPending}
+                            disabled={isEmpPending}
                             onClick={() => {
                               setOtModal({
                                 open: true,
@@ -683,7 +963,7 @@ export function DailyAttendanceSheetClient({
                       {row.attendanceType === 'PRESENT' && att && !isLocked ? (
                         <button
                           type="button"
-                          disabled={isPending}
+                          disabled={isEmpPending}
                           onClick={() => {
                             const defaultLeave = new Date().toTimeString().slice(0, 5);
                             setEarlyDepartureModal({
@@ -743,11 +1023,11 @@ export function DailyAttendanceSheetClient({
           <div className="flex justify-end gap-2 pt-2 border-t border-[#808080]">
             <button
               type="button"
-              disabled={isPending || !excusedModal.reason.trim()}
+              disabled={isModalPending || !excusedModal.reason.trim()}
               onClick={onConfirmExcusedAbsent}
               className="win-btn px-4 py-1 font-bold text-black"
             >
-              {isPending ? 'جاري الحفظ...' : 'تأكيد تسجيل الغياب بعذر'}
+              {isModalPending ? 'جاري الحفظ...' : 'تأكيد تسجيل الغياب بعذر'}
             </button>
             <button
               type="button"
@@ -810,11 +1090,11 @@ export function DailyAttendanceSheetClient({
           <div className="flex justify-end gap-2 pt-2 border-t border-[#808080]">
             <button
               type="button"
-              disabled={isPending}
+              disabled={isModalPending}
               onClick={onConfirmLate}
               className="win-btn px-4 py-1 font-bold text-black"
             >
-              {isPending ? 'جاري الحفظ...' : 'تأكيد وحفظ التأخير'}
+              {isModalPending ? 'جاري الحفظ...' : 'تأكيد وحفظ التأخير'}
             </button>
             <button
               type="button"
@@ -896,11 +1176,11 @@ export function DailyAttendanceSheetClient({
           <div className="flex justify-end gap-2 pt-2 border-t border-[#808080]">
             <button
               type="button"
-              disabled={isPending}
+              disabled={isModalPending}
               onClick={onConfirmEarlyDeparture}
               className="win-btn px-4 py-1 font-bold text-black"
             >
-              {isPending ? 'جاري الحفظ...' : 'تسجيل المغادرة'}
+              {isModalPending ? 'جاري الحفظ...' : 'تسجيل المغادرة'}
             </button>
             <button
               type="button"
@@ -945,11 +1225,11 @@ export function DailyAttendanceSheetClient({
           <div className="flex justify-end gap-2 pt-2 border-t border-[#808080]">
             <button
               type="button"
-              disabled={isPending}
+              disabled={isModalPending}
               onClick={onConfirmOvertime}
               className="win-btn px-4 py-1 font-bold text-black"
             >
-              {isPending ? 'جاري الحفظ...' : 'اعتماد وحفظ الساعات'}
+              {isModalPending ? 'جاري الحفظ...' : 'اعتماد وحفظ الساعات'}
             </button>
             <button
               type="button"

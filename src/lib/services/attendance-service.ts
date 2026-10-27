@@ -831,3 +831,95 @@ export async function approveAttendanceRecord(actor: UserSession, attendanceId: 
   return updated;
 }
 
+export async function bulkMarkPresentForDate(
+  actor: UserSession,
+  workDate: string,
+  onlyUnmarked: boolean = true
+): Promise<{ markedCount: number; skippedCount: number; total: number }> {
+  const db = getDb();
+
+  const activeEmployees = await db.select().from(schema.employees).where(
+    and(
+      eq(schema.employees.status, 'ACTIVE'),
+      lte(schema.employees.startDate, workDate),
+      sql`(${schema.employees.endDate} IS NULL OR ${schema.employees.endDate} >= ${workDate})`
+    )
+  );
+
+  const existingRecords = await db.select().from(schema.attendance).where(
+    eq(schema.attendance.workDate, workDate)
+  );
+  const existingMap = new Map(existingRecords.map((r: any) => [r.employeeId, r]));
+  const lockedIds = await getLockedEmployeeIds(workDate);
+
+  let markedCount = 0;
+  let skippedCount = 0;
+
+  for (const emp of activeEmployees) {
+    if (lockedIds.has(emp.id)) {
+      skippedCount++;
+      continue;
+    }
+
+    const existing = existingMap.get(emp.id);
+    if (onlyUnmarked && existing) {
+      continue;
+    }
+
+    await markPresent(actor, emp.id, workDate);
+    markedCount++;
+  }
+
+  await logAuditEvent({
+    actor,
+    tableName: 'attendance',
+    recordId: workDate,
+    action: 'ATTENDANCE_BULK_MARK_PRESENT',
+    metadata: { workDate, onlyUnmarked, markedCount, skippedCount, total: activeEmployees.length },
+  });
+
+  return { markedCount, skippedCount, total: activeEmployees.length };
+}
+
+export async function approveAllDailyAttendance(
+  actor: UserSession,
+  workDate: string
+): Promise<{ approvedCount: number }> {
+  assertCanApproveAttendance(actor);
+
+  const db = getDb();
+  const records = await db.select().from(schema.attendance).where(
+    and(
+      eq(schema.attendance.workDate, workDate),
+      eq(schema.attendance.status, 'DRAFT')
+    )
+  );
+
+  let approvedCount = 0;
+  for (const record of records) {
+    if (record.attendanceType === 'PRESENT' && (!record.clockIn || !record.clockOut)) {
+      continue;
+    }
+
+    await db.update(schema.attendance)
+      .set({
+        status: 'APPROVED',
+        updatedBy: actor.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.attendance.id, record.id));
+
+    approvedCount++;
+  }
+
+  await logAuditEvent({
+    actor,
+    tableName: 'attendance',
+    recordId: workDate,
+    action: 'ATTENDANCE_APPROVE_ALL_DAILY',
+    metadata: { workDate, approvedCount, totalDrafts: records.length },
+  });
+
+  return { approvedCount };
+}
+

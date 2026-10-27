@@ -25,26 +25,6 @@ export function MenuBar({ user }: MenuBarProps) {
 
   return (
     <div className="relative z-30 select-none">
-      {/* Windows 2000 Top Window Header */}
-      <div className="win-titlebar flex items-center justify-between">
-        <div className="flex items-center gap-2 font-bold text-xs">
-          <span className="text-base">💼</span>
-          <span>نظام إدارة الموارد البشرية والرواتب - Enterprise Edition [v2005.4]</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button type="button" className="win-box-btn" title="تصغير">_</button>
-          <button type="button" className="win-box-btn" title="تكبير">□</button>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="win-box-btn font-bold text-red-900"
-            title="تسجيل الخروج"
-          >
-            ×
-          </button>
-        </div>
-      </div>
-
       {/* Classic Menu Bar */}
       <div className="win-menubar flex items-center gap-1 text-xs border-b border-[#808080] bg-[#ECE9D8]">
         {/* ملف */}
@@ -216,6 +196,19 @@ export function MenuBar({ user }: MenuBarProps) {
               <div className="text-[11px] text-slate-600">قاعدة البيانات: متصلة</div>
             </div>
           )}
+        </div>
+
+        {/* Logout Button */}
+        <div className="mr-auto flex items-center px-1">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="px-2 py-0.5 text-xs text-red-800 font-bold hover:bg-red-100 rounded flex items-center gap-1 cursor-pointer"
+            title="تسجيل الخروج من النظام"
+          >
+            <span>🚪</span>
+            <span>تسجيل الخروج</span>
+          </button>
         </div>
       </div>
 

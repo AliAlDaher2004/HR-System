@@ -56,10 +56,6 @@ export function Toolbar() {
           <span>طباعة</span>
         </button>
       </div>
-
-      <div className="text-[11px] text-[#404040] hidden md:block">
-        نظام رواتب وموظفين كلاسيكي v2005
-      </div>
     </div>
   );
 }
