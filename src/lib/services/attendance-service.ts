@@ -13,9 +13,9 @@ export interface ShiftCalculation {
   lateMinutes: number | null;
 }
 
-import { formatDurationArabic, parseTimeToMinutes } from '../utils/time';
+import { formatDurationArabic, parseTimeToMinutes, calculateEarlyDepartureMinutes, calculateLateMinutes } from '../utils/time';
 import { getEmployeeShiftCode } from '../utils/shift';
-export { formatDurationArabic, parseTimeToMinutes, getEmployeeShiftCode };
+export { formatDurationArabic, parseTimeToMinutes, calculateEarlyDepartureMinutes, calculateLateMinutes, getEmployeeShiftCode };
 
 export interface ShiftInfo {
   shiftCode: 'MORNING' | 'EVENING' | 'CUSTOM';
@@ -481,36 +481,41 @@ export async function recordEarlyDeparture(
   const [emp] = await db.select().from(schema.employees).where(eq(schema.employees.id, record.employeeId));
   const settings = await getSystemSettings();
 
-  let clockInTimeStr = '08:00';
+  // Determine base shift time: prefer stored scheduledIn or employee start time, then clockIn
+  let shiftBaseTime = record.scheduledIn ? record.scheduledIn.slice(0, 5) : (emp?.workStartTime ? emp.workStartTime.slice(0, 5) : '08:00');
   if (record.clockIn) {
     const h = String(record.clockIn.getUTCHours()).padStart(2, '0');
     const m = String(record.clockIn.getUTCMinutes()).padStart(2, '0');
-    clockInTimeStr = `${h}:${m}`;
+    shiftBaseTime = `${h}:${m}`;
   }
 
-  const shift = detectShift(clockInTimeStr, emp?.workStartTime, emp?.workEndTime, settings);
+  const shift = detectShift(shiftBaseTime, emp?.workStartTime, emp?.workEndTime, settings);
   const schedEnd = shift.schedEnd;
-  const breakMins = record.breakMinutes ?? (emp?.breakMinutes ?? (settings?.defaultBreakMinutes ?? 60));
+  const isEvening = shift.shiftCode === 'EVENING';
+  const breakMins = record.breakMinutes ?? (isEvening ? 0 : (emp?.breakMinutes ?? (settings?.defaultBreakMinutes ?? 60)));
 
-  function parseEndTimeToMinutes(timeStr: string): number {
-    const mins = parseTimeToMinutes(timeStr);
-    if (mins <= 360) return mins + 1440; // Overnight shift past midnight
-    return mins;
+  // Exact early departure minutes calculated with overnight support
+  const earlyDepartureMinutes = calculateEarlyDepartureMinutes(schedEnd, clockOutTimeStr);
+
+  const outMins = parseTimeToMinutes(clockOutTimeStr);
+  let clockOutDate = new Date(`${record.workDate}T${clockOutTimeStr.padStart(5, '0')}:00Z`);
+  // If departure time is after midnight (<= 6:00 AM / 360 mins), date belongs to next day
+  if (outMins <= 360) {
+    const nextDay = new Date(record.workDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const nextDayStr = nextDay.toISOString().slice(0, 10);
+    clockOutDate = new Date(`${nextDayStr}T${clockOutTimeStr.padStart(5, '0')}:00Z`);
   }
-
-  const schedEndMinutes = parseEndTimeToMinutes(schedEnd);
-  const actualOutMinutes = parseEndTimeToMinutes(clockOutTimeStr);
-
-  // Exact early departure minutes: max(0, ScheduledEndTime - ClockOutTime)
-  const earlyDepartureMinutes = Math.max(0, schedEndMinutes - actualOutMinutes);
-
-  const clockOutDate = new Date(`${record.workDate}T${clockOutTimeStr.padStart(5, '0')}:00Z`);
 
   // Recalculate worked minutes
   let workedMinutes = record.workedMinutes;
   if (record.clockIn) {
     const clockInMinutes = record.clockIn.getUTCHours() * 60 + record.clockIn.getUTCMinutes();
-    const duration = Math.max(0, actualOutMinutes - clockInMinutes);
+    let effectiveOutMins = outMins;
+    if (outMins <= 360 && clockInMinutes > 360) {
+      effectiveOutMins += 1440;
+    }
+    const duration = Math.max(0, effectiveOutMins - clockInMinutes);
     workedMinutes = Math.max(0, duration - breakMins);
   }
 

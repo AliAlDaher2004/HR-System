@@ -622,6 +622,27 @@ describe('HR & Payroll Production Business Rules & Specification Test Suite', ()
       expect(updated.earlyDepartureMinutes).toBe(120);
     });
 
+    it('24b. Evening shift (17:00 to 01:00) early departure at 20:00 calculates exactly 300 minutes (5 hours)', async () => {
+      const emp = await createEmployee(adminUser, {
+        employeeNo: 'ATT-EV-001',
+        name: 'Evening Shift Employee',
+        department: 'Operations',
+        jobTitle: 'Night Tech',
+        startDate: '2026-06-01',
+        workStartTime: '17:00:00',
+        workEndTime: '01:00:00',
+        breakMinutes: 0,
+      });
+
+      const att = await markPresent(adminUser, emp.id, '2026-06-05', '17:00');
+      const updated = await recordEarlyDeparture(adminUser, att.id, '20:00', 'إذن شخصي');
+
+      expect(updated.attendanceType).toBe('PRESENT');
+      expect(updated.earlyDeparture).toBe(true);
+      expect(updated.earlyDepartureMinutes).toBe(300); // 5 hours early departure before 01:00
+      expect(updated.workedMinutes).toBe(180); // Worked from 17:00 to 20:00 = 3 hours
+    });
+
     it('25. Excused absence applies 1.0 day deduction and saves excuse reason', async () => {
       const emp = await createEmployee(adminUser, {
         employeeNo: 'ATT-006',

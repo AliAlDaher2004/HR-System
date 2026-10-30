@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui';
-import { formatDurationArabic } from '@/lib/utils/time';
+import { formatDurationArabic, calculateEarlyDepartureMinutes, calculateLateMinutes } from '@/lib/utils/time';
 import { getEmployeeShift, getEmployeeShiftCode } from '@/lib/utils/shift';
 
 interface EmployeeAttendanceRow {
@@ -210,11 +210,7 @@ export function DailyAttendanceSheetClient({
     setFeedback(null);
     const empId = lateModal.employeeId;
     const prev = displayRows;
-    const schedParts = lateModal.scheduledIn.split(':');
-    const schedMins = (parseInt(schedParts[0], 10) || 0) * 60 + (parseInt(schedParts[1], 10) || 0);
-    const arrParts = lateModal.arrivalTime.split(':');
-    const arrMins = (parseInt(arrParts[0], 10) || 0) * 60 + (parseInt(arrParts[1], 10) || 0);
-    const diff = Math.max(0, arrMins - schedMins);
+    const diff = calculateLateMinutes(lateModal.scheduledIn, lateModal.arrivalTime);
 
     // Instant optimistic update
     setDisplayRows((current) =>
@@ -324,11 +320,10 @@ export function DailyAttendanceSheetClient({
   async function onConfirmEarlyDeparture() {
     setFeedback(null);
     const prev = displayRows;
-    const schedParts = earlyDepartureModal.scheduledOut.split(':');
-    const schedMins = (parseInt(schedParts[0], 10) || 0) * 60 + (parseInt(schedParts[1], 10) || 0);
-    const depParts = earlyDepartureModal.departureTime.split(':');
-    const depMins = (parseInt(depParts[0], 10) || 0) * 60 + (parseInt(depParts[1], 10) || 0);
-    const diff = Math.max(0, schedMins - depMins);
+    const diff = calculateEarlyDepartureMinutes(
+      earlyDepartureModal.scheduledOut,
+      earlyDepartureModal.departureTime
+    );
 
     // Instant optimistic update
     setDisplayRows((current) =>
@@ -336,7 +331,7 @@ export function DailyAttendanceSheetClient({
         r.attendance?.id === earlyDepartureModal.attendanceId
           ? {
               ...r,
-              earlyDeparture: true,
+              earlyDeparture: diff > 0,
               earlyDepartureMinutes: diff,
             }
           : r
@@ -965,13 +960,20 @@ export function DailyAttendanceSheetClient({
                           type="button"
                           disabled={isEmpPending}
                           onClick={() => {
-                            const defaultLeave = new Date().toTimeString().slice(0, 5);
+                            const isEvening = getEmployeeShiftCode(row.scheduledIn) === 'EVENING';
+                            let defaultLeave = '14:30';
+                            if (att?.clockOut && row.earlyDeparture) {
+                              const d = new Date(att.clockOut);
+                              defaultLeave = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+                            } else if (isEvening) {
+                              defaultLeave = '20:00';
+                            }
                             setEarlyDepartureModal({
                               open: true,
                               attendanceId: att.id,
                               employeeName: emp.name,
                               scheduledOut: row.scheduledOut.slice(0, 5),
-                              departureTime: defaultLeave < row.scheduledOut.slice(0, 5) ? defaultLeave : '14:30',
+                              departureTime: defaultLeave,
                               reason: att.departureReason || 'شخصي',
                             });
                           }}
@@ -1066,11 +1068,7 @@ export function DailyAttendanceSheetClient({
 
           {/* Quick calculated feedback */}
           {(() => {
-            const schedParts = lateModal.scheduledIn.split(':');
-            const schedMins = (parseInt(schedParts[0], 10) || 0) * 60 + (parseInt(schedParts[1], 10) || 0);
-            const arrParts = lateModal.arrivalTime.split(':');
-            const arrMins = (parseInt(arrParts[0], 10) || 0) * 60 + (parseInt(arrParts[1], 10) || 0);
-            const diff = Math.max(0, arrMins - schedMins);
+            const diff = calculateLateMinutes(lateModal.scheduledIn, lateModal.arrivalTime);
 
             return (
               <div className="win-sunken p-2 bg-white text-center font-bold">
@@ -1152,11 +1150,10 @@ export function DailyAttendanceSheetClient({
 
           {/* Quick calculated feedback */}
           {(() => {
-            const schedParts = earlyDepartureModal.scheduledOut.split(':');
-            const schedMins = (parseInt(schedParts[0], 10) || 0) * 60 + (parseInt(schedParts[1], 10) || 0);
-            const depParts = earlyDepartureModal.departureTime.split(':');
-            const depMins = (parseInt(depParts[0], 10) || 0) * 60 + (parseInt(depParts[1], 10) || 0);
-            const diff = Math.max(0, schedMins - depMins);
+            const diff = calculateEarlyDepartureMinutes(
+              earlyDepartureModal.scheduledOut,
+              earlyDepartureModal.departureTime
+            );
 
             return (
               <div className="win-sunken p-2 bg-white text-center font-bold">
