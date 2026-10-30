@@ -95,6 +95,15 @@ export const RBAC = {
   canManageSettings(role: UserRole): boolean {
     return role === 'ADMIN';
   },
+
+  // Disciplinary Warnings: Viewable by all operational roles, manageable by Admin and HR
+  canViewWarnings(role: UserRole): boolean {
+    return ['ADMIN', 'HR', 'ACCOUNTANT', 'SUPERVISOR'].includes(role);
+  },
+
+  canManageWarnings(role: UserRole): boolean {
+    return role === 'ADMIN' || role === 'HR';
+  },
 };
 
 export function requireRole(user: UserSession | null, allowedRoles: UserRole[]) {

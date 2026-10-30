@@ -40,7 +40,7 @@ export function EditEmployeeModal({
     employee.minuteDeductionRate ? String(employee.minuteDeductionRate) : ''
   );
   const [workStartTime, setWorkStartTime] = useState<string>(employee.workStartTime || '08:00');
-  const [workEndTime, setWorkEndTime] = useState<string>(employee.workEndTime || '16:30');
+  const [workEndTime, setWorkEndTime] = useState<string>(employee.workEndTime || '17:00');
   const [breakMinutes, setBreakMinutes] = useState<string>(
     employee.breakMinutes !== null && employee.breakMinutes !== undefined
       ? String(employee.breakMinutes)
@@ -73,7 +73,7 @@ export function EditEmployeeModal({
     setDailyRate(employee.dailyRate ? String(employee.dailyRate) : '');
     setMinuteDeductionRate(employee.minuteDeductionRate ? String(employee.minuteDeductionRate) : '');
     setWorkStartTime(employee.workStartTime || '08:00');
-    setWorkEndTime(employee.workEndTime || '16:30');
+    setWorkEndTime(employee.workEndTime || '17:00');
     setBreakMinutes(
       employee.breakMinutes !== null && employee.breakMinutes !== undefined
         ? String(employee.breakMinutes)
@@ -391,32 +391,32 @@ export function EditEmployeeModal({
                   type="button"
                   onClick={() => {
                     setWorkStartTime('08:00');
-                    setWorkEndTime('16:30');
+                    setWorkEndTime('17:00');
                     setBreakMinutes('60');
                   }}
                   className={`px-3 py-1 text-xs font-bold rounded border flex items-center gap-1.5 transition-none ${
-                    (workStartTime === '08:00' || !workStartTime) && (workEndTime === '16:30' || workEndTime === '17:00')
+                    (workStartTime === '08:00' || !workStartTime) && (workEndTime === '17:00' || !workEndTime)
                       ? 'bg-amber-600 text-white border-amber-700 shadow-inner'
                       : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
                   }`}
                 >
-                  <span>☀️ الوردية الصباحية (08:00 - 16:30)</span>
+                  <span>☀️ الوردية الصباحية (08:00 - 17:00)</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
-                    setWorkStartTime('16:30');
+                    setWorkStartTime('17:00');
                     setWorkEndTime('01:00');
-                    setBreakMinutes('60');
+                    setBreakMinutes('0');
                   }}
                   className={`px-3 py-1 text-xs font-bold rounded border flex items-center gap-1.5 transition-none ${
-                    workStartTime === '16:30' && workEndTime === '01:00'
+                    workStartTime === '17:00' && workEndTime === '01:00'
                       ? 'bg-indigo-700 text-white border-indigo-800 shadow-inner'
                       : 'bg-indigo-50 text-indigo-900 border-indigo-300 hover:bg-indigo-100'
                   }`}
                 >
-                  <span>🌙 الوردية المسائية (16:30 - 01:00)</span>
+                  <span>🌙 الوردية المسائية (17:00 - 01:00)</span>
                 </button>
               </div>
             </div>

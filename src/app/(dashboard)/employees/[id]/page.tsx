@@ -14,8 +14,15 @@ import { getLeaveBalances, getLeaveRequests } from '@/lib/services/leave-service
 import { getLoans } from '@/lib/services/loan-service';
 import { getPayrolls } from '@/lib/services/payroll-service';
 import { getEmployeeDocuments } from '@/lib/services/document-service';
+import {
+  getEmployeeWarnings,
+  createWarning,
+  revokeWarning,
+  deleteWarning,
+  WarningLevel,
+} from '@/lib/services/warning-service';
 import { Badge } from '@/components/ui';
-import { RBAC } from '@/lib/auth/rbac';
+import { RBAC, requireRole } from '@/lib/auth/rbac';
 import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { EmployeeDetailTabs } from '@/components/employee/EmployeeDetailTabs';
@@ -35,10 +42,9 @@ export default async function EmployeeDetailPage({
   const employeeId = resolvedParams.id;
   const initialTab = resolvedSearchParams.tab || 'basic';
 
-  const employee = await getEmployeeById(user, employeeId);
-
-  // Fetch all authorized tab data in parallel for zero tab switching latency
+  // Fetch employee record and all authorized tab data in parallel for zero tab switching latency
   const [
+    employee,
     contracts,
     attendances,
     leaveBalances,
@@ -47,7 +53,9 @@ export default async function EmployeeDetailPage({
     payrolls,
     documents,
     identityImages,
+    warnings,
   ] = await Promise.all([
+    getEmployeeById(user, employeeId),
     RBAC.canViewContracts(user.role) ? getContractsByEmployeeId(user, employeeId) : Promise.resolve([]),
     getAttendanceRecords(user, { employeeId }),
     ['ADMIN', 'HR', 'ACCOUNTANT'].includes(user.role) ? getLeaveBalances(employeeId) : Promise.resolve([]),
@@ -58,6 +66,7 @@ export default async function EmployeeDetailPage({
     ['ADMIN', 'HR'].includes(user.role)
       ? getEmployeeIdentityImages(user, employeeId).catch(() => ({ frontUrl: null, backUrl: null }))
       : Promise.resolve({ frontUrl: null, backUrl: null }),
+    RBAC.canViewWarnings(user.role) ? getEmployeeWarnings(user, employeeId).catch(() => []) : Promise.resolve([]),
   ]);
 
   async function handleCreateContract(formData: FormData) {
@@ -209,6 +218,72 @@ export default async function EmployeeDetailPage({
     revalidatePath(`/employees/${employeeId}`);
   }
 
+  async function handleCreateWarning(formData: FormData) {
+    'use server';
+    const currentUser = await getCurrentUser();
+    if (!currentUser) throw new Error('غير مصرح');
+    requireRole(currentUser, ['ADMIN', 'HR']);
+
+    const warningLevel = formData.get('warningLevel') as WarningLevel;
+    const warningDate = formData.get('warningDate') as string;
+    const title = formData.get('title') as string;
+    const reason = formData.get('reason') as string;
+    const administrativeAction = (formData.get('administrativeAction') as string) || null;
+    const signedByEmployee = formData.get('signedByEmployee') === 'true';
+    const notes = (formData.get('notes') as string) || null;
+
+    const file = formData.get('attachment') as File | null;
+    let fileBuffer: Buffer | undefined;
+    let mimeType: string | undefined;
+    let originalFilename: string | undefined;
+
+    if (file && file.size > 0 && typeof file.arrayBuffer === 'function') {
+      const arrayBuffer = await file.arrayBuffer();
+      fileBuffer = Buffer.from(arrayBuffer);
+      mimeType = file.type;
+      originalFilename = file.name;
+    }
+
+    await createWarning(currentUser, {
+      employeeId,
+      warningLevel,
+      warningDate,
+      title,
+      reason,
+      administrativeAction,
+      signedByEmployee,
+      notes,
+      fileBuffer,
+      mimeType,
+      originalFilename,
+    });
+
+    revalidatePath(`/employees/${employeeId}`);
+    revalidatePath('/warnings');
+  }
+
+  async function handleRevokeWarning(id: string, revokeReason?: string) {
+    'use server';
+    const currentUser = await getCurrentUser();
+    if (!currentUser) throw new Error('غير مصرح');
+    requireRole(currentUser, ['ADMIN', 'HR']);
+
+    await revokeWarning(currentUser, id, revokeReason);
+    revalidatePath(`/employees/${employeeId}`);
+    revalidatePath('/warnings');
+  }
+
+  async function handleDeleteWarning(id: string) {
+    'use server';
+    const currentUser = await getCurrentUser();
+    if (!currentUser) throw new Error('غير مصرح');
+    requireRole(currentUser, ['ADMIN']);
+
+    await deleteWarning(currentUser, id);
+    revalidatePath(`/employees/${employeeId}`);
+    revalidatePath('/warnings');
+  }
+
   return (
     <div className="space-y-2">
       {/* Titlebar in Windows 2000 style */}
@@ -237,7 +312,7 @@ export default async function EmployeeDetailPage({
                     <span>{empShift.icon}</span>
                     <span>{empShift.name}</span>
                     <span className="font-mono text-[10px] opacity-75">
-                      ({employee.workStartTime ? employee.workStartTime.slice(0, 5) : '08:00'} - {employee.workEndTime ? employee.workEndTime.slice(0, 5) : (empShift.code === 'EVENING' ? '01:00' : '16:30')})
+                      ({employee.workStartTime ? employee.workStartTime.slice(0, 5) : '08:00'} - {employee.workEndTime ? employee.workEndTime.slice(0, 5) : (empShift.code === 'EVENING' ? '01:00' : '17:00')})
                     </span>
                   </span>
                 );
@@ -261,6 +336,7 @@ export default async function EmployeeDetailPage({
         loans={loans}
         payrolls={payrolls}
         documents={documents}
+        warnings={warnings}
         identityImages={identityImages}
         createContractAction={handleCreateContract}
         updateSocialSecurityAction={handleUpdateSocialSecurity}
@@ -269,6 +345,9 @@ export default async function EmployeeDetailPage({
         updateEmployeeAction={handleUpdateEmployee}
         updateStatusAction={handleUpdateStatus}
         toggleContractSignedAction={handleToggleContractSigned}
+        createWarningAction={handleCreateWarning}
+        revokeWarningAction={handleRevokeWarning}
+        deleteWarningAction={handleDeleteWarning}
       />
     </div>
   );

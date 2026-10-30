@@ -11,7 +11,6 @@ import {
   bulkMarkPresentForDate,
   approveAllDailyAttendance,
 } from '@/lib/services/attendance-service';
-import { getEmployees } from '@/lib/services/employee-service';
 import { revalidatePath } from 'next/cache';
 import { DailyAttendanceSheetClient } from '@/components/attendance/DailyAttendanceSheetClient';
 
@@ -29,14 +28,13 @@ export default async function AttendancePage({
   const todayStr = new Date().toISOString().split('T')[0];
   const selectedDate = resolvedParams.date || todayStr;
 
-  // Fetch daily attendance sheet, employees, and lock statuses in parallel
-  const [rawDailyRows, employees, lockedEmpIds] = await Promise.all([
+  // Fetch daily attendance sheet and lock statuses in parallel
+  const [rawDailyRows, lockedEmpIds] = await Promise.all([
     getDailyAttendanceSheet(user, selectedDate),
-    getEmployees(user),
     getLockedEmployeeIds(selectedDate),
   ]);
 
-  const departments = Array.from(new Set(employees.map((e) => e.department))).filter(Boolean);
+  const departments = Array.from(new Set(rawDailyRows.map((r: any) => r.employee.department))).filter(Boolean) as string[];
 
   const dailyRowsWithLocks = rawDailyRows.map((row: any) => ({
     ...row,

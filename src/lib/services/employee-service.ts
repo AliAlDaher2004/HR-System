@@ -67,6 +67,16 @@ export function calculateProbationEndDate(startDateStr: string): string {
   return `${y}-${m}-${da}`;
 }
 
+interface EmployeeCacheEntry {
+  rows: any[];
+  expiresAt: number;
+}
+let employeesCache: EmployeeCacheEntry | null = null;
+
+export function invalidateEmployeesCache() {
+  employeesCache = null;
+}
+
 export async function getEmployees(
   actor: UserSession,
   filters?: {
@@ -106,9 +116,17 @@ export async function getEmployees(
     );
   }
 
-  const rows = conditions.length > 0 
-    ? await query.where(and(...conditions)).orderBy(desc(schema.employees.createdAt))
-    : await query.orderBy(desc(schema.employees.createdAt));
+  let rows: any[];
+  if (conditions.length === 0) {
+    if (employeesCache && Date.now() < employeesCache.expiresAt) {
+      rows = employeesCache.rows;
+    } else {
+      rows = await query.orderBy(desc(schema.employees.createdAt));
+      employeesCache = { rows, expiresAt: Date.now() + 20 * 1000 };
+    }
+  } else {
+    rows = await query.where(and(...conditions)).orderBy(desc(schema.employees.createdAt));
+  }
 
   const canViewSensitive = ['ADMIN', 'HR'].includes(actor.role);
   const canViewFinancial = RBAC.canViewContracts(actor.role);
@@ -359,6 +377,8 @@ export async function createEmployee(
     updatedBy: actor.id,
   }).returning();
 
+  invalidateEmployeesCache();
+
   if (empType === 'DAILY_WORKER' && dailyRateStr) {
     await db.insert(schema.dailyRateHistory).values({
       employeeId: inserted.id,
@@ -541,6 +561,8 @@ export async function updateEmployee(
     })
     .where(eq(schema.employees.id, employeeId))
     .returning();
+
+  invalidateEmployeesCache();
 
   if (data.dailyRate !== undefined && data.dailyRate !== null && Number(data.dailyRate).toFixed(3) !== current.dailyRate) {
     const todayDateStr = new Date().toISOString().slice(0, 10);

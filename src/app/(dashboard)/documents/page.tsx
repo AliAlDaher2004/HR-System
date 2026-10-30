@@ -18,9 +18,11 @@ export default async function DocumentsPage() {
     redirect('/');
   }
 
-  const employees = await getEmployees(user);
-  const documents = await getEmployeeDocuments(user);
-  const expirySummary = await getDocumentExpirySummary(user);
+  const [employees, documents, expirySummary] = await Promise.all([
+    getEmployees(user),
+    getEmployeeDocuments(user),
+    getDocumentExpirySummary(user),
+  ]);
 
   async function handleUploadDocument(formData: FormData) {
     'use server';

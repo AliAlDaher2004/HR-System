@@ -64,8 +64,8 @@ export default async function PrintDailyAttendancePage({
   const weekday = dateObj.toLocaleDateString('ar-JO', { weekday: 'long' });
 
   let shiftTitle = 'جميع الورديات (الصباحية والمسائية)';
-  if (currentShift === 'MORNING') shiftTitle = 'الوردية الصباحية (08:00 - 16:30)';
-  if (currentShift === 'EVENING') shiftTitle = 'الوردية المسائية (16:30 - 01:00)';
+  if (currentShift === 'MORNING') shiftTitle = 'الوردية الصباحية (08:00 - 17:00)';
+  if (currentShift === 'EVENING') shiftTitle = 'الوردية المسائية (17:00 - 01:00)';
 
   return (
     <div className="min-h-screen bg-slate-100 py-4 px-3 flex flex-col items-center print:bg-white print:p-0 print:m-0 print:block" dir="rtl">

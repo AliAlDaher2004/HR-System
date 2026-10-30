@@ -35,7 +35,7 @@ export const settings = pgTable('settings', {
   payrollPolicy: text('payroll_policy').notNull().default('سياسة الرواتب والأجور المعتمدة للشركة'),
   payrollPolicyConfirmed: boolean('payroll_policy_confirmed').notNull().default(false),
   defaultWorkStartTime: time('default_work_start_time').notNull().default('08:00:00'),
-  defaultWorkEndTime: time('default_work_end_time').notNull().default('16:30:00'),
+  defaultWorkEndTime: time('default_work_end_time').notNull().default('17:00:00'),
   defaultBreakMinutes: integer('default_break_minutes').notNull().default(60),
   defaultMinuteDeductionRate: numeric('default_minute_deduction_rate', { precision: 12, scale: 3 }).notNull().default('0.000'),
   defaultOtRate: numeric('default_ot_rate', { precision: 12, scale: 3 }).notNull().default('2.500'),
@@ -253,6 +253,25 @@ export const dailyRateHistory = pgTable('daily_rate_history', {
   createdBy: uuid('created_by').references(() => users.id),
 });
 
+// 14. Warnings
+export const warnings = pgTable('warnings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  warningLevel: varchar('warning_level', { length: 50 }).notNull().$type<'VERBAL' | 'FIRST' | 'SECOND' | 'FINAL' | 'TERMINATION'>(),
+  warningDate: date('warning_date').notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  reason: text('reason').notNull(),
+  administrativeAction: text('administrative_action'),
+  signedByEmployee: boolean('signed_by_employee').notNull().default(false),
+  attachmentPath: varchar('attachment_path', { length: 500 }),
+  status: varchar('status', { length: 20 }).notNull().default('ACTIVE').$type<'ACTIVE' | 'REVOKED'>(),
+  notes: text('notes'),
+  createdBy: uuid('created_by').references(() => users.id),
+  updatedBy: uuid('updated_by').references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Relations
 export const employeesRelations = relations(employees, ({ many }) => ({
   contracts: many(contracts),
@@ -262,6 +281,7 @@ export const employeesRelations = relations(employees, ({ many }) => ({
   loans: many(loans),
   payrolls: many(payroll),
   documents: many(documents),
+  warnings: many(warnings),
 }));
 
 export const contractsRelations = relations(contracts, ({ one, many }) => ({
@@ -302,3 +322,15 @@ export const payrollRelations = relations(payroll, ({ one, many }) => ({
   }),
   repayments: many(repayments),
 }));
+
+export const warningsRelations = relations(warnings, ({ one }) => ({
+  employee: one(employees, {
+    fields: [warnings.employeeId],
+    references: [employees.id],
+  }),
+  creator: one(users, {
+    fields: [warnings.createdBy],
+    references: [users.id],
+  }),
+}));
+

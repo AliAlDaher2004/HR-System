@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import { RBAC } from '@/lib/auth/rbac';
 import { revalidatePath } from 'next/cache';
 import { logAuditEvent } from '@/lib/auth/audit';
-import { getSystemSettings } from '@/lib/services/settings-service';
+import { getSystemSettings, invalidateSettingsCache } from '@/lib/services/settings-service';
 
 export default async function SettingsPage() {
   const user = await getCurrentUser();
@@ -62,6 +62,8 @@ export default async function SettingsPage() {
           updatedAt: new Date(),
         })
         .where(eq(schema.settings.id, existing.id));
+
+      invalidateSettingsCache();
 
       await logAuditEvent({
         actor: currentUser,
@@ -166,13 +168,13 @@ export default async function SettingsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
                 <div className="p-2 bg-amber-50 border border-amber-300 rounded">
                   <span className="font-bold text-amber-900 block">☀️ الوردية الصباحية (Morning Shift):</span>
-                  <span className="text-amber-800">من 08:00 صباحاً إلى 04:30 مساءً (08:00 - 16:30)</span>
-                  <span className="text-[10px] text-amber-700 block mt-0.5">تطبق تلقائياً عند تسجيل الحضور من 08:00 ص حتى 04:29 م.</span>
+                  <span className="text-amber-800">من 08:00 صباحاً إلى 05:00 مساءً (08:00 - 17:00)</span>
+                  <span className="text-[10px] text-amber-700 block mt-0.5">تطبق عند تسجيل الحضور صباحاً، وتتضمن ساعة استراحة (60 دقيقة) = 8 ساعات عمل صافية.</span>
                 </div>
                 <div className="p-2 bg-indigo-50 border border-indigo-300 rounded">
                   <span className="font-bold text-indigo-900 block">🌙 الوردية المسائية (Evening Shift):</span>
-                  <span className="text-indigo-800">من 04:30 مساءً إلى 01:00 صباح اليوم التالي (16:30 - 01:00)</span>
-                  <span className="text-[10px] text-indigo-700 block mt-0.5">تطبق تلقائياً عند تسجيل الحضور من 04:30 م وما بعدها.</span>
+                  <span className="text-indigo-800">من 05:00 مساءً إلى 01:00 صباح اليوم التالي (17:00 - 01:00)</span>
+                  <span className="text-[10px] text-indigo-700 block mt-0.5">تطبق عند تسجيل الحضور مساءً (من 05:00 م)، ولا تتضمن استراحة = 8 ساعات عمل صافية.</span>
                 </div>
               </div>
             </div>
@@ -194,7 +196,7 @@ export default async function SettingsPage() {
                 <input
                   type="time"
                   name="defaultWorkEndTime"
-                  defaultValue={settings?.defaultWorkEndTime?.slice(0, 5) || '16:30'}
+                  defaultValue={settings?.defaultWorkEndTime?.slice(0, 5) || '17:00'}
                   required
                   className="win-input w-full py-1 px-2 font-mono font-bold"
                 />

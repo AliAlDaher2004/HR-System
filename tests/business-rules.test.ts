@@ -1195,19 +1195,19 @@ describe('HR & Payroll Production Business Rules & Specification Test Suite', ()
       expect(approved1.netPay).toBeDefined();
     });
 
-    it('Rule 42: detectShift classifies entries after 4:29 PM as Evening Shift (16:30-01:00) and <= 4:29 PM as Morning Shift (08:00-16:30)', () => {
+    it('Rule 42: detectShift classifies entries in evening as Evening Shift (17:00-01:00) and daytime as Morning Shift (08:00-17:00)', () => {
       const morning = detectShift('08:15');
       expect(morning.shiftCode).toBe('MORNING');
       expect(morning.schedStart).toBe('08:00');
-      expect(morning.schedEnd).toBe('16:30');
+      expect(morning.schedEnd).toBe('17:00');
 
-      const evening = detectShift('16:30');
+      const evening = detectShift('17:00');
       expect(evening.shiftCode).toBe('EVENING');
-      expect(evening.schedStart).toBe('16:30');
+      expect(evening.schedStart).toBe('17:00');
       expect(evening.schedEnd).toBe('01:00');
     });
 
-    it('Rule 43: Evening Shift (16:30-01:00) calculates 0 mins late at 16:30 and 15 mins late at 16:45', async () => {
+    it('Rule 43: Evening Shift (17:00-01:00) calculates 0 mins late at 17:00 and 15 mins late at 17:15 with 0 break (8h worked)', async () => {
       const emp = await createEmployee(adminUser, {
         employeeNo: 'EMP-EVENING-01',
         name: 'طارق زياد',
@@ -1218,15 +1218,16 @@ describe('HR & Payroll Production Business Rules & Specification Test Suite', ()
         monthlyBasic: 600,
       });
 
-      const attOnTime = await markPresent(adminUser, emp.id, '2026-11-10', '16:30');
+      const attOnTime = await markPresent(adminUser, emp.id, '2026-11-10', '17:00');
       expect(attOnTime.lateMinutes).toBe(0);
+      expect(attOnTime.workedMinutes).toBe(480); // 8 hours net with 0 break
 
-      const attLate = await markLate(adminUser, emp.id, '2026-11-12', '16:45');
+      const attLate = await markLate(adminUser, emp.id, '2026-11-12', '17:15');
       expect(attLate.lateMinutes).toBe(15);
       expect(attLate.notes).toContain('الوردية المسائية');
     });
 
-    it('Rule 44: Morning Shift (08:00-16:30) calculates lateness and early departure relative to shift bounds', async () => {
+    it('Rule 44: Morning Shift (08:00-17:00) calculates lateness and early departure relative to shift bounds', async () => {
       const emp = await createEmployee(adminUser, {
         employeeNo: 'EMP-EVENING-02',
         name: 'هشام محمود',
@@ -1241,8 +1242,8 @@ describe('HR & Payroll Production Business Rules & Specification Test Suite', ()
       expect(att.lateMinutes).toBe(15);
       expect(att.notes).toContain('الوردية الصباحية');
 
-      const earlyDep = await recordEarlyDeparture(adminUser, att.id, '15:30', 'شخصي');
-      expect(earlyDep.earlyDepartureMinutes).toBe(60); // 16:30 - 15:30 = 60 mins
+      const earlyDep = await recordEarlyDeparture(adminUser, att.id, '16:00', 'شخصي');
+      expect(earlyDep.earlyDepartureMinutes).toBe(60); // 17:00 - 16:00 = 60 mins
     });
   });
 });

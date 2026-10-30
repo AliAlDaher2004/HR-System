@@ -16,8 +16,10 @@ export default async function LeavePage() {
     redirect('/');
   }
 
-  const employees = await getEmployees(user);
-  const requests = await getLeaveRequests(user);
+  const [employees, requests] = await Promise.all([
+    getEmployees(user),
+    getLeaveRequests(user),
+  ]);
 
   async function handleCreateRequest(formData: FormData) {
     'use server';

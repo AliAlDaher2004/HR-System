@@ -23,7 +23,7 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
   const [contractSigned, setContractSigned] = useState<boolean>(true);
   const [contractSignedDate, setContractSignedDate] = useState<string>('');
   const [workStartTime, setWorkStartTime] = useState<string>('08:00');
-  const [workEndTime, setWorkEndTime] = useState<string>('16:30');
+  const [workEndTime, setWorkEndTime] = useState<string>('17:00');
   const [breakMinutes, setBreakMinutes] = useState<string>('60');
 
   const fetchNextEmployeeNo = async () => {
@@ -106,7 +106,7 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
       setContractSigned(true);
       setContractSignedDate('');
       setWorkStartTime('08:00');
-      setWorkEndTime('16:30');
+      setWorkEndTime('17:00');
       setBreakMinutes('60');
     } catch (err: any) {
       setErrorMessage(err.message || 'حدث خطأ أثناء حفظ بيانات الموظف');
@@ -454,32 +454,32 @@ export function CreateEmployeeModal({ createEmployeeAction }: CreateEmployeeModa
                   type="button"
                   onClick={() => {
                     setWorkStartTime('08:00');
-                    setWorkEndTime('16:30');
+                    setWorkEndTime('17:00');
                     setBreakMinutes('60');
                   }}
                   className={`px-3 py-1 text-xs font-bold rounded border flex items-center gap-1.5 transition-none ${
-                    workStartTime === '08:00' && workEndTime === '16:30'
+                    workStartTime === '08:00' && workEndTime === '17:00'
                       ? 'bg-amber-600 text-white border-amber-700 shadow-inner'
                       : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
                   }`}
                 >
-                  <span>☀️ الوردية الصباحية (08:00 - 16:30)</span>
+                  <span>☀️ الوردية الصباحية (08:00 - 17:00)</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
-                    setWorkStartTime('16:30');
+                    setWorkStartTime('17:00');
                     setWorkEndTime('01:00');
-                    setBreakMinutes('60');
+                    setBreakMinutes('0');
                   }}
                   className={`px-3 py-1 text-xs font-bold rounded border flex items-center gap-1.5 transition-none ${
-                    workStartTime === '16:30' && workEndTime === '01:00'
+                    workStartTime === '17:00' && workEndTime === '01:00'
                       ? 'bg-indigo-700 text-white border-indigo-800 shadow-inner'
                       : 'bg-indigo-50 text-indigo-900 border-indigo-300 hover:bg-indigo-100'
                   }`}
                 >
-                  <span>🌙 الوردية المسائية (16:30 - 01:00)</span>
+                  <span>🌙 الوردية المسائية (17:00 - 01:00)</span>
                 </button>
               </div>
             </div>

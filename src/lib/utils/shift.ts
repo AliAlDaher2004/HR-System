@@ -20,8 +20,8 @@ export const SHIFTS: Record<'MORNING' | 'EVENING', ShiftDefinition> = {
     shortName: 'صباحي',
     icon: '☀️',
     defaultStartTime: '08:00',
-    defaultEndTime: '16:30',
-    hoursLabel: '08:00 - 16:30',
+    defaultEndTime: '17:00',
+    hoursLabel: '08:00 - 17:00',
     badgeBg: 'bg-amber-100',
     badgeText: 'text-amber-900',
     badgeBorder: 'border-amber-400',
@@ -31,9 +31,9 @@ export const SHIFTS: Record<'MORNING' | 'EVENING', ShiftDefinition> = {
     name: 'الوردية المسائية',
     shortName: 'مسائي',
     icon: '🌙',
-    defaultStartTime: '16:30',
+    defaultStartTime: '17:00',
     defaultEndTime: '01:00',
-    hoursLabel: '16:30 - 01:00',
+    hoursLabel: '17:00 - 01:00',
     badgeBg: 'bg-indigo-100',
     badgeText: 'text-indigo-900',
     badgeBorder: 'border-indigo-400',
@@ -42,8 +42,8 @@ export const SHIFTS: Record<'MORNING' | 'EVENING', ShiftDefinition> = {
 
 /**
  * Determine whether an employee or attendance record belongs to MORNING or EVENING shift.
- * Evening shift is defined as starting at or after 16:30 (4:30 PM) or before 06:00 AM.
- * Morning shift is defined as starting between 06:00 AM and 16:29 PM (default: 08:00).
+ * Evening shift is defined as starting at or after 17:00 (5:00 PM) or before 06:00 AM (also accommodating 16:30 for legacy edge cases).
+ * Morning shift is defined as starting between 06:00 AM and 16:59 PM (default: 08:00).
  */
 export function getEmployeeShiftCode(workStartTime?: string | null): 'MORNING' | 'EVENING' {
   if (!workStartTime) return 'MORNING';
@@ -53,7 +53,7 @@ export function getEmployeeShiftCode(workStartTime?: string | null): 'MORNING' |
   const minutes = parseInt(mStr, 10) || 0;
   const totalMinutes = hours * 60 + minutes;
 
-  // 16:30 = 990 minutes. 06:00 = 360 minutes.
+  // 16:30 and later (16*60 + 30) or before 06:00 (6*60) is Evening shift
   if (totalMinutes >= 16 * 60 + 30 || totalMinutes < 6 * 60) {
     return 'EVENING';
   }

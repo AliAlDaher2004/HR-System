@@ -875,7 +875,7 @@ export function DailyAttendanceSheetClient({
                               const schedStart = row.scheduledIn.slice(0, 5);
                               let arrivalSuggestion = '08:15';
                               if (isEvening) {
-                                arrivalSuggestion = defaultArrival > '16:30' ? defaultArrival : '16:45';
+                                arrivalSuggestion = defaultArrival > '17:00' ? defaultArrival : '17:15';
                               } else {
                                 arrivalSuggestion = defaultArrival > schedStart ? defaultArrival : '08:15';
                               }

@@ -27,19 +27,32 @@ export default async function EmployeesPage({
 
   const resolvedSearchParams = await searchParams;
 
-  // Fetch counts for Active vs Archived staff
-  const allEmployeesForCount = await getEmployees(user);
-  const departments = Array.from(new Set(allEmployeesForCount.map((e) => e.department))).filter(Boolean);
-  const activeCount = allEmployeesForCount.filter((e) => e.status === 'ACTIVE').length;
-  const archivedCount = allEmployeesForCount.filter((e) => e.status === 'TERMINATED').length;
-  const activeMorningCount = allEmployeesForCount.filter((e) => e.status === 'ACTIVE' && getEmployeeShiftCode(e.workStartTime) === 'MORNING').length;
-  const activeEveningCount = allEmployeesForCount.filter((e) => e.status === 'ACTIVE' && getEmployeeShiftCode(e.workStartTime) === 'EVENING').length;
+  // Fetch all employees once and filter in-memory for speed
+  const allEmployees = await getEmployees(user);
+  const departments = Array.from(new Set(allEmployees.map((e) => e.department))).filter(Boolean);
+  const activeCount = allEmployees.filter((e) => e.status === 'ACTIVE').length;
+  const archivedCount = allEmployees.filter((e) => e.status === 'TERMINATED').length;
+  const activeMorningCount = allEmployees.filter((e) => e.status === 'ACTIVE' && getEmployeeShiftCode(e.workStartTime) === 'MORNING').length;
+  const activeEveningCount = allEmployees.filter((e) => e.status === 'ACTIVE' && getEmployeeShiftCode(e.workStartTime) === 'EVENING').length;
 
-  let employees = await getEmployees(user, {
-    search: resolvedSearchParams.search,
-    department: resolvedSearchParams.department,
-    status: resolvedSearchParams.status,
-  });
+  let employees = allEmployees;
+
+  if (resolvedSearchParams.status) {
+    employees = employees.filter((e) => e.status === resolvedSearchParams.status);
+  }
+  if (resolvedSearchParams.department) {
+    employees = employees.filter((e) => e.department === resolvedSearchParams.department);
+  }
+  if (resolvedSearchParams.search) {
+    const q = resolvedSearchParams.search.toLowerCase().trim();
+    employees = employees.filter(
+      (e) =>
+        e.name.toLowerCase().includes(q) ||
+        e.employeeNo.toLowerCase().includes(q) ||
+        (e.jobTitle && e.jobTitle.toLowerCase().includes(q)) ||
+        (e.department && e.department.toLowerCase().includes(q))
+    );
+  }
 
   // Filter in-memory for extended social security, employment type, and shift filters
   if (resolvedSearchParams.socialSecurity === 'REGISTERED') {
@@ -405,7 +418,7 @@ export default async function EmployeesPage({
                     <td>
                       <span
                         className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold rounded border ${empShift.badgeBg} ${empShift.badgeText} ${empShift.badgeBorder} whitespace-nowrap`}
-                        title={`ساعات العمل: ${emp.workStartTime ? emp.workStartTime.slice(0, 5) : '08:00'} - ${emp.workEndTime ? emp.workEndTime.slice(0, 5) : (empShift.code === 'EVENING' ? '01:00' : '16:30')}`}
+                        title={`ساعات العمل: ${emp.workStartTime ? emp.workStartTime.slice(0, 5) : '08:00'} - ${emp.workEndTime ? emp.workEndTime.slice(0, 5) : (empShift.code === 'EVENING' ? '01:00' : '17:00')}`}
                       >
                         <span>{empShift.icon}</span>
                         <span>{empShift.shortName}</span>

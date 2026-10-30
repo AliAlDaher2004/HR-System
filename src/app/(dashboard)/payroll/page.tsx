@@ -28,12 +28,14 @@ export default async function PayrollPage({
   }
 
   const resolvedParams = await searchParams;
-  const employees = await getEmployees(user);
-  const payrolls = await getPayrolls(user, {
-    month: resolvedParams.month,
-    employeeId: resolvedParams.employeeId,
-    status: resolvedParams.status,
-  });
+  const [employees, payrolls] = await Promise.all([
+    getEmployees(user),
+    getPayrolls(user, {
+      month: resolvedParams.month,
+      employeeId: resolvedParams.employeeId,
+      status: resolvedParams.status,
+    }),
+  ]);
 
   // Calculate summary category totals across filtered payrolls
   let totalBasicEarned = 0;

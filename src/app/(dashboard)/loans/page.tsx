@@ -18,8 +18,10 @@ export default async function LoansPage() {
     redirect('/');
   }
 
-  const employees = await getEmployees(user);
-  const loans = await getLoans(user);
+  const [employees, loans] = await Promise.all([
+    getEmployees(user),
+    getLoans(user),
+  ]);
 
   async function handleCreateLoan(formData: FormData) {
     'use server';

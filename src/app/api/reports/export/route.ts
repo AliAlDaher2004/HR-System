@@ -185,7 +185,7 @@ export async function GET(req: NextRequest) {
           e.jobTitle,
           s.name,
           e.workStartTime ? e.workStartTime.slice(0, 5) : '08:00',
-          e.workEndTime ? e.workEndTime.slice(0, 5) : (s.code === 'EVENING' ? '01:00' : '16:30'),
+          e.workEndTime ? e.workEndTime.slice(0, 5) : (s.code === 'EVENING' ? '01:00' : '17:00'),
           e.employmentType === 'DAILY_WORKER' ? 'مياومة' : e.employmentType === 'PROBATIONARY' ? 'تجريبي' : 'مثبت',
           e.socialSecurityRegistered ? 'مسجل' : 'غير مسجل',
           e.phone || '',

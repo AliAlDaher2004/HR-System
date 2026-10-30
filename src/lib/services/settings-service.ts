@@ -1,18 +1,36 @@
 import { getDb, schema } from '../../db';
 import { sql } from 'drizzle-orm';
 
-let columnChecked = false;
+interface SettingsCache {
+  data: any;
+  expiresAt: number;
+}
+
+let settingsCache: SettingsCache | null = null;
+
+export function invalidateSettingsCache() {
+  settingsCache = null;
+}
 
 export async function getSystemSettings() {
+  if (settingsCache && Date.now() < settingsCache.expiresAt) {
+    return settingsCache.data;
+  }
+
   const db = getDb();
 
   try {
     const [row] = await db.select().from(schema.settings).limit(1);
     if (!row) return null;
-    return {
+    const result = {
       ...row,
       defaultOtRate: (row as any).defaultOtRate || '2.500',
     };
+    settingsCache = {
+      data: result,
+      expiresAt: Date.now() + 60 * 1000, // 60 seconds TTL
+    };
+    return result;
   } catch (err) {
     try {
       const [row] = await db
@@ -31,7 +49,14 @@ export async function getSystemSettings() {
         })
         .from(schema.settings)
         .limit(1);
-      return row ? { ...row, defaultOtRate: '2.500' } : null;
+      const result = row ? { ...row, defaultOtRate: '2.500' } : null;
+      if (result) {
+        settingsCache = {
+          data: result,
+          expiresAt: Date.now() + 60 * 1000,
+        };
+      }
+      return result;
     } catch {
       return null;
     }

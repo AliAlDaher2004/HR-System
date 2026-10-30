@@ -6,7 +6,7 @@ import { eq, and, ne, gte, lte } from 'drizzle-orm';
 import { RBAC } from '@/lib/auth/rbac';
 import Link from 'next/link';
 import { getSystemSettings } from '@/lib/services/settings-service';
-import { getEmployeesDueForContractSigning } from '@/lib/services/employee-service';
+import { calculateProbationEndDate } from '@/lib/services/employee-service';
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
@@ -16,7 +16,7 @@ export default async function DashboardPage() {
   const todayStr = new Date().toISOString().slice(0, 10);
   const currentMonthStr = todayStr.slice(0, 7);
 
-  // Parallelize all database queries to run in a single concurrent network roundtrip
+  // Parallelize core queries to run in a single concurrent network roundtrip
   const [
     activeEmployees,
     todayAttendance,
@@ -24,7 +24,6 @@ export default async function DashboardPage() {
     pendingLeaves,
     monthlyPayrolls,
     settings,
-    probationEndingEmployees,
   ] = await Promise.all([
     db.select().from(schema.employees).where(eq(schema.employees.status, 'ACTIVE')),
     db.select().from(schema.attendance).where(eq(schema.attendance.workDate, todayStr)),
@@ -41,8 +40,34 @@ export default async function DashboardPage() {
         )
       : Promise.resolve([]),
     getSystemSettings().catch(() => ({ currency: 'JOD' })),
-    getEmployeesDueForContractSigning(user).catch(() => []),
   ]);
+
+  // Compute employees due for contract signing in-memory without duplicate DB queries
+  const probationEndingEmployees: any[] = [];
+  for (const emp of activeEmployees) {
+    if (emp.employmentType === 'PROBATIONARY' || emp.probationStatus === 'IN_PROBATION' || emp.probationStatus === 'PROBATION_ENDED') {
+      const probationEnd = emp.probationEndDate || calculateProbationEndDate(emp.startDate);
+      if (todayStr >= probationEnd) {
+        const empContracts = allContracts.filter((c: any) => c.employeeId === emp.id);
+        const hasSignedPermanentContract = empContracts.some((c: any) => c.contractSigned === true && emp.employmentType === 'PERMANENT');
+        if (!hasSignedPermanentContract) {
+          const diffMs = new Date(todayStr).getTime() - new Date(probationEnd).getTime();
+          const daysPassed = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+          probationEndingEmployees.push({
+            id: emp.id,
+            employeeNo: emp.employeeNo,
+            name: emp.name,
+            department: emp.department,
+            jobTitle: emp.jobTitle,
+            startDate: emp.startDate,
+            probationEndDate: probationEnd,
+            daysPassedSinceProbationEnd: daysPassed,
+            contractSigned: false,
+          });
+        }
+      }
+    }
+  }
 
   // 1. Employee statistics
   const permanentCount = activeEmployees.filter((e: any) => e.employmentType === 'PERMANENT').length;

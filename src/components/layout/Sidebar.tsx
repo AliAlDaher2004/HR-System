@@ -16,6 +16,7 @@ import {
   History,
   Settings,
   UserCog,
+  AlertTriangle,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -34,6 +35,12 @@ export function Sidebar({ user }: { user: UserSession }) {
       href: '/employees',
       icon: Users,
       show: true,
+    },
+    {
+      title: 'الإنذارات والمخالفات',
+      href: '/warnings',
+      icon: AlertTriangle,
+      show: RBAC.canViewWarnings(user.role),
     },
     {
       title: 'الحضور والدوام',

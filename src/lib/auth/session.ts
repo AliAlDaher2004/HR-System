@@ -3,8 +3,24 @@ import { getDb, schema } from '../../db';
 import { eq } from 'drizzle-orm';
 import { UserSession, AuthorizationError } from './rbac';
 import { cookies } from 'next/headers';
+import { cache } from 'react';
 
-export async function getCurrentUser(): Promise<UserSession | null> {
+interface CachedUser {
+  user: UserSession;
+  expiresAt: number;
+}
+
+const userSessionCache = new Map<string, CachedUser>();
+
+export function invalidateUserSessionCache(email?: string) {
+  if (email) {
+    userSessionCache.delete(email);
+  } else {
+    userSessionCache.clear();
+  }
+}
+
+async function fetchCurrentUser(): Promise<UserSession | null> {
   const cookieStore = await cookies();
   
   // Check for local dev session cookie or Supabase session
@@ -29,6 +45,12 @@ export async function getCurrentUser(): Promise<UserSession | null> {
 
   if (!userEmail) {
     return null;
+  }
+
+  // Check in-memory cache first (30s TTL)
+  const cached = userSessionCache.get(userEmail);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.user;
   }
 
   const db = getDb();
@@ -59,14 +81,23 @@ export async function getCurrentUser(): Promise<UserSession | null> {
     return null;
   }
 
-  return {
+  const sessionUser: UserSession = {
     id: profile.id,
     email: profile.email,
     fullName: profile.fullName,
     role: profile.role,
     active: profile.active,
   };
+
+  userSessionCache.set(userEmail, {
+    user: sessionUser,
+    expiresAt: Date.now() + 30 * 1000, // 30 seconds TTL
+  });
+
+  return sessionUser;
 }
+
+export const getCurrentUser = cache(fetchCurrentUser);
 
 export async function requireAuth(): Promise<UserSession> {
   const user = await getCurrentUser();

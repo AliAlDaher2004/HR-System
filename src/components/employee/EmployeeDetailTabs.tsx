@@ -8,6 +8,9 @@ import { formatDurationArabic } from '@/lib/utils/time';
 import { UpdateEmployeeStatusModal } from './UpdateEmployeeStatusModal';
 import { EditEmployeeModal } from './EditEmployeeModal';
 import { ContractSignedToggle } from './ContractSignedToggle';
+import { WarningDTO } from '@/lib/types/warning';
+import { WarningsTable } from '@/components/warnings/WarningsTable';
+import { CreateWarningModal } from '@/components/warnings/CreateWarningModal';
 
 interface EmployeeDetailTabsProps {
   employee: any;
@@ -20,6 +23,7 @@ interface EmployeeDetailTabsProps {
   loans: any[];
   payrolls: any[];
   documents: any[];
+  warnings?: WarningDTO[];
   identityImages?: { frontUrl: string | null; backUrl: string | null };
   createContractAction?: (formData: FormData) => Promise<void>;
   updateSocialSecurityAction?: (formData: FormData) => Promise<void>;
@@ -28,6 +32,9 @@ interface EmployeeDetailTabsProps {
   updateEmployeeAction?: (formData: FormData) => Promise<void>;
   updateStatusAction?: (formData: FormData) => Promise<void>;
   toggleContractSignedAction?: (formData: FormData) => Promise<void>;
+  createWarningAction?: (formData: FormData) => Promise<void>;
+  revokeWarningAction?: (id: string, reason?: string) => Promise<void>;
+  deleteWarningAction?: (id: string) => Promise<void>;
 }
 
 export function EmployeeDetailTabs({
@@ -41,6 +48,7 @@ export function EmployeeDetailTabs({
   loans,
   payrolls,
   documents,
+  warnings = [],
   identityImages = { frontUrl: null, backUrl: null },
   createContractAction,
   updateSocialSecurityAction,
@@ -49,9 +57,13 @@ export function EmployeeDetailTabs({
   updateEmployeeAction,
   updateStatusAction,
   toggleContractSignedAction,
+  createWarningAction,
+  revokeWarningAction,
+  deleteWarningAction,
 }: EmployeeDetailTabsProps) {
   const [currentTab, setCurrentTab] = useState(initialTab);
   const [isPending, startTransition] = useTransition();
+  const [createWarningModalOpen, setCreateWarningModalOpen] = useState(false);
 
   // Social Security state
   const [ssRegistered, setSsRegistered] = useState<boolean>(Boolean(employee.socialSecurityRegistered));
@@ -78,6 +90,7 @@ export function EmployeeDetailTabs({
   const canViewFinancials = ['ADMIN', 'ACCOUNTANT'].includes(userRole);
   const canViewDocuments = ['ADMIN', 'HR'].includes(userRole);
   const canViewIdentityImages = ['ADMIN', 'HR'].includes(userRole);
+  const canViewWarnings = ['ADMIN', 'HR', 'ACCOUNTANT', 'SUPERVISOR'].includes(userRole);
 
   const tabs = [
     { key: 'basic', label: 'البيانات الأساسية', show: true },
@@ -89,6 +102,11 @@ export function EmployeeDetailTabs({
     { key: 'leaves', label: 'الإجازات والأرصدة', show: canViewLeaves },
     { key: 'loans', label: 'السلف والمستحقات', show: canViewLoans },
     { key: 'payroll', label: 'سجل الرواتب', show: canViewFinancials },
+    {
+      key: 'warnings',
+      label: `الإنذارات والمخالفات${warnings.length > 0 ? ` (${warnings.length})` : ''}`,
+      show: canViewWarnings,
+    },
     { key: 'documents', label: 'الوثائق والمستندات', show: false },
   ].filter((t) => t.show);
 
@@ -558,10 +576,10 @@ export function EmployeeDetailTabs({
                 <div className="text-xs text-slate-700 space-y-1">
                   <div className="flex flex-wrap gap-3">
                     <span className="bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-bold border border-amber-300">
-                      ☀️ الوردية الصباحية: 08:00 ص - 04:30 م
+                      ☀️ الوردية الصباحية: 08:00 ص - 05:00 م (استراحة 60 دقيقة)
                     </span>
                     <span className="bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded font-bold border border-indigo-300">
-                      🌙 الوردية المسائية: 04:30 م - 01:00 ص
+                      🌙 الوردية المسائية: 05:00 م - 01:00 ص (بدون استراحة)
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">
@@ -587,7 +605,7 @@ export function EmployeeDetailTabs({
                     <input
                       type="time"
                       name="workEndTime"
-                      defaultValue={employee.workEndTime || '16:30'}
+                      defaultValue={employee.workEndTime || '17:00'}
                       className="win-input w-full py-1 px-2 font-mono font-bold"
                     />
                   </div>
@@ -1096,6 +1114,54 @@ export function EmployeeDetailTabs({
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* TAB: DISCIPLINARY WARNINGS */}
+        {currentTab === 'warnings' && (
+          <div className="space-y-3">
+            <div className="win-raised p-2 bg-[#ECE9D8] flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-base">⚠️</span>
+                <div>
+                  <h3 className="font-bold text-xs text-black">
+                    سجل الإنذارات والمخالفات الإدارية ({employee.name})
+                  </h3>
+                  <p className="text-[10px] text-slate-600">
+                    متابعة التنبيهات والإنذارات الموجهة للموظف والقرارات الإدارية والمرفقات الموقعة
+                  </p>
+                </div>
+              </div>
+
+              {['ADMIN', 'HR'].includes(userRole) && createWarningAction && (
+                <button
+                  type="button"
+                  onClick={() => setCreateWarningModalOpen(true)}
+                  className="win-btn font-bold text-xs bg-[#0A246A] text-white px-3 py-1 flex items-center gap-1 shadow"
+                >
+                  <span>➕</span>
+                  <span>إصدار إنذار لهذا الموظف</span>
+                </button>
+              )}
+            </div>
+
+            <WarningsTable
+              warnings={warnings}
+              userRole={userRole}
+              revokeWarningAction={revokeWarningAction}
+              deleteWarningAction={deleteWarningAction}
+              hideEmployeeColumn={true}
+            />
+
+            {createWarningAction && (
+              <CreateWarningModal
+                isOpen={createWarningModalOpen}
+                onClose={() => setCreateWarningModalOpen(false)}
+                createWarningAction={createWarningAction}
+                fixedEmployeeId={employee.id}
+                fixedEmployeeName={employee.name}
+              />
+            )}
           </div>
         )}
       </div>

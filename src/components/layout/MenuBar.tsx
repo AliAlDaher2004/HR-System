@@ -40,6 +40,7 @@ export function MenuBar({ user }: MenuBarProps) {
             <div className="absolute right-0 top-full mt-0.5 w-44 win-raised p-1 shadow-lg z-50 text-black">
               <Link
                 href="/"
+                prefetch={true}
                 onClick={() => setOpenMenu(null)}
                 className="block px-3 py-1 hover:bg-[#0A246A] hover:text-white text-xs"
               >
@@ -47,6 +48,7 @@ export function MenuBar({ user }: MenuBarProps) {
               </Link>
               <Link
                 href="/settings"
+                prefetch={true}
                 onClick={() => setOpenMenu(null)}
                 className="block px-3 py-1 hover:bg-[#0A246A] hover:text-white text-xs"
               >
@@ -77,13 +79,23 @@ export function MenuBar({ user }: MenuBarProps) {
             <div className="absolute right-0 top-full mt-0.5 w-48 win-raised p-1 shadow-lg z-50 text-black">
               <Link
                 href="/employees"
+                prefetch={true}
                 onClick={() => setOpenMenu(null)}
                 className="block px-3 py-1 hover:bg-[#0A246A] hover:text-white text-xs"
               >
                 دليل الموظفين
               </Link>
               <Link
+                href="/warnings"
+                prefetch={true}
+                onClick={() => setOpenMenu(null)}
+                className="block px-3 py-1 hover:bg-[#0A246A] hover:text-white text-xs font-bold text-amber-950"
+              >
+                ⚠️ سجل الإنذارات والمخالفات
+              </Link>
+              <Link
                 href="/documents"
+                prefetch={true}
                 onClick={() => setOpenMenu(null)}
                 className="block px-3 py-1 hover:bg-[#0A246A] hover:text-white text-xs"
               >
@@ -106,6 +118,7 @@ export function MenuBar({ user }: MenuBarProps) {
             <div className="absolute right-0 top-full mt-0.5 w-48 win-raised p-1 shadow-lg z-50 text-black">
               <Link
                 href="/attendance"
+                prefetch={true}
                 onClick={() => setOpenMenu(null)}
                 className="block px-3 py-1 hover:bg-[#0A246A] hover:text-white text-xs font-bold"
               >
@@ -113,6 +126,7 @@ export function MenuBar({ user }: MenuBarProps) {
               </Link>
               <Link
                 href="/leave"
+                prefetch={true}
                 onClick={() => setOpenMenu(null)}
                 className="block px-3 py-1 hover:bg-[#0A246A] hover:text-white text-xs"
               >
@@ -135,6 +149,7 @@ export function MenuBar({ user }: MenuBarProps) {
             <div className="absolute right-0 top-full mt-0.5 w-48 win-raised p-1 shadow-lg z-50 text-black">
               <Link
                 href="/payroll"
+                prefetch={true}
                 onClick={() => setOpenMenu(null)}
                 className="block px-3 py-1 hover:bg-[#0A246A] hover:text-white text-xs font-bold"
               >
@@ -142,6 +157,7 @@ export function MenuBar({ user }: MenuBarProps) {
               </Link>
               <Link
                 href="/loans"
+                prefetch={true}
                 onClick={() => setOpenMenu(null)}
                 className="block px-3 py-1 hover:bg-[#0A246A] hover:text-white text-xs"
               >
@@ -164,6 +180,7 @@ export function MenuBar({ user }: MenuBarProps) {
             <div className="absolute right-0 top-full mt-0.5 w-48 win-raised p-1 shadow-lg z-50 text-black">
               <Link
                 href="/reports"
+                prefetch={true}
                 onClick={() => setOpenMenu(null)}
                 className="block px-3 py-1 hover:bg-[#0A246A] hover:text-white text-xs"
               >
@@ -171,6 +188,7 @@ export function MenuBar({ user }: MenuBarProps) {
               </Link>
               <Link
                 href="/audit"
+                prefetch={true}
                 onClick={() => setOpenMenu(null)}
                 className="block px-3 py-1 hover:bg-[#0A246A] hover:text-white text-xs"
               >

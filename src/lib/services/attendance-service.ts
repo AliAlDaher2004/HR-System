@@ -14,7 +14,8 @@ export interface ShiftCalculation {
 }
 
 import { formatDurationArabic, parseTimeToMinutes } from '../utils/time';
-export { formatDurationArabic, parseTimeToMinutes };
+import { getEmployeeShiftCode } from '../utils/shift';
+export { formatDurationArabic, parseTimeToMinutes, getEmployeeShiftCode };
 
 export interface ShiftInfo {
   shiftCode: 'MORNING' | 'EVENING' | 'CUSTOM';
@@ -29,41 +30,46 @@ export function detectShift(
   empOverrideEnd?: string | null,
   settings?: any
 ): ShiftInfo {
+  // Normalize legacy 16:30 to 17:00
+  let normStart = empOverrideStart;
+  let normEnd = empOverrideEnd;
+  if (normStart === '16:30' || normStart === '16:30:00') normStart = '17:00';
+  if (normEnd === '16:30' || normEnd === '16:30:00') normEnd = '17:00';
+
+  const defaultMorningStart = normStart || settings?.morningShiftStartTime || settings?.defaultWorkStartTime || '08:00';
+  const defaultMorningEnd = normEnd || settings?.morningShiftEndTime || settings?.defaultWorkEndTime || '17:00';
+
+  const defaultEveningStart = normStart || settings?.eveningShiftStartTime || '17:00';
+  const defaultEveningEnd = normEnd || settings?.eveningShiftEndTime || '01:00';
+
   if (!arrivalTimeStr) {
-    const start = empOverrideStart || settings?.morningShiftStartTime || '08:00';
-    const end = empOverrideEnd || settings?.morningShiftEndTime || '16:30';
     return {
       shiftCode: 'MORNING',
       shiftName: 'الوردية الصباحية',
-      schedStart: start.slice(0, 5),
-      schedEnd: end.slice(0, 5),
+      schedStart: defaultMorningStart.slice(0, 5),
+      schedEnd: defaultMorningEnd.slice(0, 5),
     };
   }
 
   const arrivalMinutes = parseTimeToMinutes(arrivalTimeStr);
-  const cutoffMinutes = parseTimeToMinutes('16:29'); // 4:29 PM threshold
 
-  // If entry time is entered after 4:29 PM (16:30 or later): EVENING SHIFT (4:30 PM to 1:00 AM)
-  if (arrivalMinutes > cutoffMinutes) {
-    const eveningStart = settings?.eveningShiftStartTime || '16:30';
-    const eveningEnd = settings?.eveningShiftEndTime || '01:00';
+  // If entry time is 17:00 or later (1020 mins) or before 06:00 AM (< 360 mins): EVENING SHIFT (5:00 PM to 1:00 AM)
+  // Also accommodate 16:30 as evening shift arrival if entered near transition
+  if (arrivalMinutes >= 16 * 60 + 30 || arrivalMinutes < 6 * 60) {
     return {
       shiftCode: 'EVENING',
       shiftName: 'الوردية المسائية',
-      schedStart: eveningStart.slice(0, 5),
-      schedEnd: eveningEnd.slice(0, 5),
+      schedStart: defaultEveningStart.slice(0, 5),
+      schedEnd: defaultEveningEnd.slice(0, 5),
     };
   }
 
-  // Entry time is at or before 4:29 PM: MORNING SHIFT (8:00 AM to 4:30 PM)
-  const morningStart = empOverrideStart || settings?.morningShiftStartTime || '08:00';
-  const morningEnd = empOverrideEnd || settings?.morningShiftEndTime || '16:30';
-
+  // Morning Shift (08:00 AM to 05:00 PM)
   return {
     shiftCode: 'MORNING',
     shiftName: 'الوردية الصباحية',
-    schedStart: morningStart.slice(0, 5),
-    schedEnd: morningEnd.slice(0, 5),
+    schedStart: defaultMorningStart.slice(0, 5),
+    schedEnd: defaultMorningEnd.slice(0, 5),
   };
 }
 
@@ -218,10 +224,14 @@ export async function getDailyAttendanceSheet(actor: UserSession, workDate: stri
     const schedIn = att?.scheduledIn || emp.workStartTime || defaultStart;
     let schedOut = emp.workEndTime || defaultEnd;
     if (att?.scheduledIn) {
-      const histShift = detectShift(att.scheduledIn.slice(0, 5), att.scheduledIn, null, settings);
+      const histShift = detectShift(att.scheduledIn.slice(0, 5), att.scheduledIn, emp.workEndTime, settings);
       schedOut = histShift.schedEnd;
+    } else {
+      const empShift = detectShift(emp.workStartTime ? emp.workStartTime.slice(0, 5) : defaultStart.slice(0, 5), emp.workStartTime, emp.workEndTime, settings);
+      schedOut = empShift.schedEnd;
     }
-    const breakMins = att?.breakMinutes ?? emp.breakMinutes ?? defaultBreak;
+    const isEvening = getEmployeeShiftCode(schedIn) === 'EVENING';
+    const breakMins = att?.breakMinutes ?? (isEvening ? (emp.breakMinutes !== 60 && emp.breakMinutes !== null && emp.breakMinutes !== undefined ? emp.breakMinutes : 0) : (emp.breakMinutes ?? defaultBreak));
 
     return {
       employee: emp,
@@ -261,7 +271,10 @@ export async function markPresent(
   const shift = detectShift(arrivalTimeStr, emp.workStartTime, emp.workEndTime, settings);
   const schedStart = shift.schedStart;
   const schedEnd = shift.schedEnd;
-  const breakMins = emp.breakMinutes ?? (settings?.defaultBreakMinutes ?? 60);
+  const isEvening = shift.shiftCode === 'EVENING';
+  const breakMins = isEvening
+    ? (emp.breakMinutes !== null && emp.breakMinutes !== undefined && emp.breakMinutes !== 60 ? emp.breakMinutes : 0)
+    : (emp.breakMinutes !== null && emp.breakMinutes !== undefined ? emp.breakMinutes : (settings?.defaultBreakMinutes ?? 60));
 
   const schedStartMinutes = parseTimeToMinutes(schedStart);
   const actualArrivalMinutes = parseTimeToMinutes(arrivalTimeStr);

@@ -65,8 +65,8 @@ export default async function PrintEmployeesPage({
 
   // Shift title for header
   let shiftTitle = 'جميع الورديات (الصباحية والمسائية)';
-  if (currentShift === 'MORNING') shiftTitle = 'الوردية الصباحية (08:00 - 16:30)';
-  if (currentShift === 'EVENING') shiftTitle = 'الوردية المسائية (16:30 - 01:00)';
+  if (currentShift === 'MORNING') shiftTitle = 'الوردية الصباحية (08:00 - 17:00)';
+  if (currentShift === 'EVENING') shiftTitle = 'الوردية المسائية (17:00 - 01:00)';
 
   const companyName = settings?.companyName || 'شركة التقنية والحلول المتقدمة';
   const country = settings?.country || 'المملكة الأردنية الهاشمية';
@@ -263,7 +263,7 @@ export default async function PrintEmployeesPage({
                     ? emp.workEndTime.slice(0, 5)
                     : empShift.code === 'EVENING'
                     ? '01:00'
-                    : '16:30';
+                    : '17:00';
 
                   return (
                     <tr key={emp.id} className="border-b border-slate-300 hover:bg-slate-50">

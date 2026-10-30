@@ -404,7 +404,32 @@ CREATE INDEX IF NOT EXISTS idx_daily_rate_history_emp ON public.daily_rate_histo
 CREATE INDEX IF NOT EXISTS idx_daily_rate_history_dates ON public.daily_rate_history(effective_from, effective_to);
 
 -- ==============================================================================
--- 14. ROW LEVEL SECURITY (RLS) POLICIES
+-- 14. DISCIPLINARY WARNINGS (الإنذارات والمخالفات الإدارية)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.warnings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id UUID NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
+    warning_level VARCHAR(50) NOT NULL CHECK (warning_level IN ('VERBAL', 'FIRST', 'SECOND', 'FINAL', 'TERMINATION')),
+    warning_date DATE NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    reason TEXT NOT NULL,
+    administrative_action TEXT,
+    signed_by_employee BOOLEAN NOT NULL DEFAULT FALSE,
+    attachment_path VARCHAR(500),
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'REVOKED')),
+    notes TEXT,
+    created_by UUID REFERENCES public.users(id),
+    updated_by UUID REFERENCES public.users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_warnings_employee ON public.warnings(employee_id);
+CREATE INDEX IF NOT EXISTS idx_warnings_date ON public.warnings(warning_date);
+CREATE INDEX IF NOT EXISTS idx_warnings_level ON public.warnings(warning_level);
+
+-- ==============================================================================
+-- 15. ROW LEVEL SECURITY (RLS) POLICIES
 -- ==============================================================================
 
 -- Helper function to fetch the role of the authenticated user
@@ -590,5 +615,20 @@ CREATE POLICY users_modify ON public.users
     FOR ALL TO authenticated
     USING (public.current_user_role() = 'ADMIN')
     WITH CHECK (public.current_user_role() = 'ADMIN');
+
+-- ------------------------------------------------------------------------------
+-- WARNINGS: Viewable by ADMIN, HR, ACCOUNTANT, SUPERVISOR. Editable by ADMIN, HR.
+-- ------------------------------------------------------------------------------
+DROP POLICY IF EXISTS warnings_select ON public.warnings;
+CREATE POLICY warnings_select ON public.warnings
+    FOR SELECT TO authenticated
+    USING (public.current_user_role() IN ('ADMIN', 'HR', 'ACCOUNTANT', 'SUPERVISOR'));
+
+DROP POLICY IF EXISTS warnings_modify ON public.warnings;
+CREATE POLICY warnings_modify ON public.warnings
+    FOR ALL TO authenticated
+    USING (public.current_user_role() IN ('ADMIN', 'HR'))
+    WITH CHECK (public.current_user_role() IN ('ADMIN', 'HR'));
+
 
 

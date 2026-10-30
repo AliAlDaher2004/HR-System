@@ -64,7 +64,9 @@ export async function uploadPrivateFile(
 
   // Local private storage fallback for offline/development environments
   try {
-    const localStoreDir = path.resolve(process.cwd(), './storage/private', bucket);
+    const isTest = Boolean(process.env.VITEST || process.env.NODE_ENV === 'test');
+    const rootDir = isTest ? './storage/test' : './storage/private';
+    const localStoreDir = path.resolve(process.cwd(), rootDir, bucket);
     fs.mkdirSync(localStoreDir, { recursive: true });
     const fullPath = path.join(localStoreDir, path.basename(fileRelativePath));
     fs.writeFileSync(fullPath, buffer);
@@ -79,6 +81,28 @@ export async function getSignedDownloadUrl(
   filePath: string,
   expiresInSeconds: number = 300 // 5 minutes expiration
 ): Promise<{ signedUrl: string | null; error?: string }> {
+  // 1. Check local storage first for instant zero-latency response (check test dir then private dir)
+  const isTest = Boolean(process.env.VITEST || process.env.NODE_ENV === 'test');
+  const primaryDir = isTest ? './storage/test' : './storage/private';
+  let localFile = path.resolve(process.cwd(), primaryDir, bucket, path.basename(filePath));
+
+  if (!fs.existsSync(localFile) && isTest) {
+    localFile = path.resolve(process.cwd(), './storage/private', bucket, path.basename(filePath));
+  }
+
+  if (fs.existsSync(localFile)) {
+    const secretKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'local-secure-salt-2026';
+    const expiresAt = Date.now() + expiresInSeconds * 1000;
+    const signature = crypto
+      .createHmac('sha256', secretKey)
+      .update(`${bucket}:${filePath}:${expiresAt}`)
+      .digest('hex');
+
+    const token = Buffer.from(JSON.stringify({ bucket, filePath, expiresAt, signature })).toString('base64url');
+    return { signedUrl: `/api/storage/download?token=${token}` };
+  }
+
+  // 2. Check remote Supabase storage if not on local disk
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const hasRealSupabase =
     supabaseUrl &&
@@ -97,22 +121,10 @@ export async function getSignedDownloadUrl(
       if (!error && data?.signedUrl) {
         return { signedUrl: data.signedUrl };
       }
-      console.warn('Supabase signed URL generation failed, falling back to local signed URL:', error?.message);
-    } catch (err: any) {
-      console.warn('Supabase signed URL exception, falling back to local signed URL:', err?.message);
+    } catch {
+      // Remote fetch failed
     }
   }
 
-  // Local secured token generation
-  const secretKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'local-secure-salt-2026';
-  const expiresAt = Date.now() + expiresInSeconds * 1000;
-  const signature = crypto
-    .createHmac('sha256', secretKey)
-    .update(`${bucket}:${filePath}:${expiresAt}`)
-    .digest('hex');
-
-  const token = Buffer.from(JSON.stringify({ bucket, filePath, expiresAt, signature })).toString('base64url');
-  const signedUrl = `/api/storage/download?token=${token}`;
-
-  return { signedUrl };
+  return { signedUrl: null, error: 'الملف المطلوب غير موجود' };
 }
