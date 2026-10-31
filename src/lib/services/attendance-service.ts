@@ -199,10 +199,10 @@ export async function getDailyAttendanceSheet(actor: UserSession, workDate: stri
   const employeesQuery = db.select().from(schema.employees)
     .where(
       and(
-        eq(schema.employees.status, 'ACTIVE'),
         lte(schema.employees.startDate, workDate),
         department ? eq(schema.employees.department, department) : sql`1=1`,
-        sql`(${schema.employees.endDate} IS NULL OR ${schema.employees.endDate} >= ${workDate})`
+        sql`(${schema.employees.endDate} IS NULL OR ${schema.employees.endDate} >= ${workDate} OR ${schema.employees.id} IN (SELECT employee_id FROM attendance WHERE work_date = ${workDate}))`,
+        sql`(${schema.employees.status} = 'ACTIVE' OR (${schema.employees.endDate} IS NOT NULL AND ${schema.employees.endDate} >= ${workDate}) OR ${schema.employees.id} IN (SELECT employee_id FROM attendance WHERE work_date = ${workDate}))`
       )
     )
     .orderBy(schema.employees.department, schema.employees.employeeNo);

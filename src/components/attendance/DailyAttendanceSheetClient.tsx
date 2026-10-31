@@ -80,6 +80,7 @@ export function DailyAttendanceSheetClient({
   const [filterDept, setFilterDept] = useState('');
   const [filterShift, setFilterShift] = useState<'ALL' | 'MORNING' | 'EVENING'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const isFriday = new Date(selectedDate + 'T00:00:00').getDay() === 5;
 
   // Per-employee pending set so clicking one employee never blocks or dims other employees
   const [pendingEmpIds, setPendingEmpIds] = useState<Set<string>>(new Set());
@@ -398,15 +399,17 @@ export function DailyAttendanceSheetClient({
     setIsSavingAll(true);
     try {
       let additionalMarked = 0;
-      if (bulkMarkPresentAction && unmarkedCount > 0) {
+      if (bulkMarkPresentAction && unmarkedCount > 0 && !isFriday) {
         const res = await bulkMarkPresentAction(selectedDate, true);
         additionalMarked = res.markedCount;
       }
       setFeedback({
         type: 'success',
-        message: `✓ تم بنجاح حفظ وترحيل سجل الحضور اليومي لتاريخ (${selectedDate}) ونقل البيانات إلى سجل الحضور الدائم والأرشيف.${
-          additionalMarked > 0 ? ` (تم تسجيل وترحيل ${additionalMarked} موظفاً إضافياً كحاضرين بالموعد).` : ''
-        }`,
+        message: isFriday
+          ? `✓ تم بنجاح حفظ وترحيل سجل يوم الجمعة (${selectedDate}). يوم الجمعة عطلة أسبوعية رسمية مشمولة بالراتب، وتم حفظ ساعات العمل الإضافي للموظفين الذين حضروا.`
+          : `✓ تم بنجاح حفظ وترحيل سجل الحضور اليومي لتاريخ (${selectedDate}) ونقل البيانات إلى سجل الحضور الدائم والأرشيف.${
+              additionalMarked > 0 ? ` (تم تسجيل وترحيل ${additionalMarked} موظفاً إضافياً كحاضرين بالموعد).` : ''
+            }`,
       });
     } catch (err: any) {
       setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء حفظ وترحيل سجل الحضور' });
@@ -508,6 +511,23 @@ export function DailyAttendanceSheetClient({
           >
             إغلاق ×
           </button>
+        </div>
+      )}
+
+      {/* Friday Official Holiday Notice Banner */}
+      {isFriday && (
+        <div className="win-raised p-2.5 bg-blue-50 border-2 border-blue-500 text-blue-950 flex items-start gap-2.5 text-xs shadow-sm">
+          <span className="text-xl">🕌</span>
+          <div className="space-y-0.5">
+            <div className="font-bold flex items-center gap-1.5 text-xs">
+              <span className="text-blue-900 font-extrabold">يوم الجمعة — عطلة أسبوعية رسمية مدفوعة الأجر بالكامل</span>
+              <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded font-bold">عطلة رسمية</span>
+            </div>
+            <p className="text-[11px] text-blue-900 leading-relaxed">
+              • يوم الجمعة مشمول تلقائياً ضمن الراتب الأساسي الشهري، وعدم تسجيل الحضور لا يُعد غياباً ولا يترتب عليه أي خصم.<br />
+              • في حال تكليف أي عامل بالدوام في هذا اليوم، يتم تسجيل ساعات العمل كعمل إضافي عبر زر (<strong>⚡ +إضافي</strong>)، وتُحسب الساعة بساعتي عمل عادية ديناميكياً من الراتب الأساسي للعامل.
+            </p>
+          </div>
         </div>
       )}
 
@@ -650,8 +670,8 @@ export function DailyAttendanceSheetClient({
             <span>{isSavingAll ? 'جاري الحفظ والترحيل...' : 'حفظ وترحيل سجل الحضور اليومي'}</span>
           </button>
 
-          {/* Quick Mark Remaining as Present */}
-          {unmarkedCount > 0 && (
+          {/* Quick Mark Remaining as Present (Only on non-Friday work days) */}
+          {unmarkedCount > 0 && !isFriday && (
             <button
               type="button"
               disabled={isSavingAll}
@@ -662,6 +682,13 @@ export function DailyAttendanceSheetClient({
               <span>⚡</span>
               <span>{isSavingAll ? 'جاري التسجيل...' : `تسجيل المتبقين (${unmarkedCount}) كحاضرين`}</span>
             </button>
+          )}
+
+          {isFriday && (
+            <div className="text-[11px] font-semibold text-blue-900 bg-blue-100 px-2 py-1 rounded border border-blue-300 flex items-center gap-1">
+              <span>ℹ️</span>
+              <span>الجمعة عطلة رسمية: يتم تسجيل العمل الإضافي لمن حضر فقط عبر (+إضافي)</span>
+            </div>
           )}
 
           {/* Approve All Button if HR/Admin */}
@@ -680,8 +707,8 @@ export function DailyAttendanceSheetClient({
 
           {/* Saved status indicator */}
           <div className="flex items-center gap-1 px-2 py-1 rounded bg-white border border-[#808080] text-[11px] font-semibold">
-            <span className={unmarkedCount === 0 ? 'text-emerald-700 font-bold' : 'text-amber-800'}>
-              {unmarkedCount === 0 ? '● السجل مكتمل ومحفوظ' : `○ متبقي ${unmarkedCount} غير مسجل`}
+            <span className={unmarkedCount === 0 || isFriday ? 'text-emerald-700 font-bold' : 'text-amber-800'}>
+              {unmarkedCount === 0 ? '● السجل مكتمل ومحفوظ' : isFriday ? '● يوم عطلة رسمية مدفوعة' : `○ متبقي ${unmarkedCount} غير مسجل`}
             </span>
           </div>
         </div>
@@ -726,7 +753,7 @@ export function DailyAttendanceSheetClient({
           <div className="text-sm font-bold text-blue-700">{earlyDepartureCount}</div>
         </div>
         <div className="win-sunken bg-white p-1 text-center border-r-2 border-slate-400">
-          <div className="text-[10px] text-slate-600">غير مسجل</div>
+          <div className="text-[10px] text-slate-600">{isFriday ? 'عطلة أسبوعية' : 'غير مسجل'}</div>
           <div className="text-sm font-bold text-slate-600">{unmarkedCount}</div>
         </div>
       </div>
@@ -801,10 +828,22 @@ export function DailyAttendanceSheetClient({
                     </td>
                     <td>
                       {!row.isMarked ? (
-                        <span className="text-slate-400 font-medium">غير مسجل</span>
+                        isFriday ? (
+                          <span className="text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 font-semibold text-[11px] inline-flex items-center gap-1">
+                            <span>🕌</span>
+                            <span>عطلة أسبوعية (مدفوعة)</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 font-medium">غير مسجل</span>
+                        )
                       ) : row.attendanceType === 'PRESENT' ? (
                         <div className="flex flex-col gap-0.5">
-                          {row.lateMinutes > 0 ? (
+                          {isFriday && Number(att?.approvedOtHours) > 0 ? (
+                            <span className="text-purple-900 font-bold flex items-center gap-1 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                              <span>⚡</span>
+                              <span>عمل إضافي بالجمعة ({att?.approvedOtHours} س)</span>
+                            </span>
+                          ) : row.lateMinutes > 0 ? (
                             <span className="text-amber-800 font-bold flex items-center gap-1">
                               <span>⚠</span>
                               <span>متأخر ({formatDurationArabic(row.lateMinutes)})</span>

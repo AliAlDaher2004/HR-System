@@ -230,8 +230,13 @@ export async function getBatchPayslipData(
     const allowancesEarned = parseFloat(record.allowancesEarned || '0');
     const gratuities = parseFloat(record.gratuities || '0');
     const otHours = parseFloat(record.otHours || '0');
-    const calculatedOtRate = basicEarned > 0 ? ((basicEarned / 26) / 9) * 2 : 0;
-    const otRate = parseFloat(record.otRate || '0') > 0 && parseFloat(record.otRate || '0') !== 2.5 ? parseFloat(record.otRate || '0') : calculatedOtRate;
+    // Dynamic OT rate: 1 OT hour = 2 normal hours based on basic salary (30 * 8 = 240 hrs) -> basic / 120
+    const calculatedOtRate = isDailyWorker
+      ? (dailyRate > 0 ? (dailyRate / 4) : 0)
+      : (basicEarned > 0 ? (basicEarned / 120) : 0);
+    const otRate = parseFloat(record.otRate || '0') > 0 && parseFloat(record.otRate || '0') !== 2.5
+      ? parseFloat(record.otRate || '0')
+      : Math.round(calculatedOtRate * 1000) / 1000;
     const otTotal = Math.round(otHours * otRate * 1000) / 1000;
     const otherAdditions = parseFloat(record.otherAdditions || '0');
     const unpaidDays = parseFloat(record.unpaidDays || '0');

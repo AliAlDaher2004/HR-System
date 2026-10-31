@@ -55,8 +55,12 @@ export function computeNetPayroll(values: {
 
   const basicEarned = values.basicEarned ?? 0;
   const otHours = values.otHours ?? 0;
-  const calculatedOtRate = basicEarned > 0 ? ((basicEarned / 26) / 9) * 2 : 0;
-  const otRate = (values.otRate && values.otRate > 0 && values.otRate !== 2.5) ? values.otRate : calculatedOtRate;
+  // Dynamic OT rate: 1 OT hour = 2 normal hours based on basic salary (30 days * 8 hours = 240 hours) -> basic / 120
+  // For daily workers (8 hours/day) -> 2 * (dailyRate / 8) = dailyRate / 4
+  const calculatedOtRate = isDailyWorker
+    ? (values.dailyRate && values.dailyRate > 0 ? (values.dailyRate / 4) : 0)
+    : (basicEarned > 0 ? (basicEarned / 120) : 0);
+  const otRate = (values.otRate && values.otRate > 0 && values.otRate !== 2.5) ? values.otRate : Math.round(calculatedOtRate * 1000) / 1000;
   const gratuities = values.gratuities ?? 0;
   const otherAdditions = values.otherAdditions ?? 0;
   const unpaidDays = values.unpaidDays ?? 0;
@@ -403,9 +407,6 @@ export async function createPayrollDraft(
   if (!emp) throw new Error('الموظف غير موجود');
 
   const settings = await getSystemSettings();
-  const minuteDeductionRate = emp.minuteDeductionRate
-    ? parseFloat(emp.minuteDeductionRate)
-    : (settings?.defaultMinuteDeductionRate ? parseFloat(settings.defaultMinuteDeductionRate) : 0);
 
   const monthStr = data.month < 10 ? `0${data.month}` : `${data.month}`;
   const periodStart = `${data.year}-${monthStr}-01`;
@@ -467,10 +468,41 @@ export async function createPayrollDraft(
 
     activeContract = contracts[0];
     contractId = activeContract.id;
-    basicEarned = data.basicEarned !== undefined ? data.basicEarned : parseFloat(activeContract.monthlyBasic);
-    const calculatedOtRate = basicEarned > 0 ? ((basicEarned / 26) / 9) * 2 : 0;
-    otRate = (activeContract.otRate && parseFloat(activeContract.otRate) > 0) ? parseFloat(activeContract.otRate) : calculatedOtRate;
-    unpaidDayRate = parseFloat(activeContract.unpaidDayRate);
+
+    // Proration for partial-month tenure (mid-month hire or mid-month termination)
+    const effectiveStart = emp.startDate > periodStart ? emp.startDate : periodStart;
+    const effectiveEnd = emp.endDate && emp.endDate < periodEnd ? emp.endDate : periodEnd;
+    const isPartialMonth = effectiveStart > periodStart || Boolean(emp.endDate && emp.endDate < periodEnd);
+
+    const fullMonthlyBasic = parseFloat(activeContract.monthlyBasic);
+    let activeServiceDays = 30;
+    if (isPartialMonth) {
+      const startMs = new Date(effectiveStart).getTime();
+      const endMs = new Date(effectiveEnd).getTime();
+      activeServiceDays = Math.max(0, Math.min(30, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1));
+    }
+
+    if (data.basicEarned !== undefined) {
+      basicEarned = data.basicEarned;
+    } else if (isPartialMonth) {
+      basicEarned = Math.round((fullMonthlyBasic / 30) * activeServiceDays * 1000) / 1000;
+    } else {
+      basicEarned = fullMonthlyBasic;
+    }
+
+    // Dynamic OT rate: 1 OT hour = 2 normal hours based on basic salary (30 days * 8 hours = 240 hours) -> fullMonthlyBasic / 120
+    const calculatedOtRate = fullMonthlyBasic > 0 ? (fullMonthlyBasic / 120) : 0;
+    otRate = (activeContract.otRate && parseFloat(activeContract.otRate) > 0 && parseFloat(activeContract.otRate) !== 2.5)
+      ? parseFloat(activeContract.otRate)
+      : Math.round(calculatedOtRate * 1000) / 1000;
+    unpaidDayRate = parseFloat(activeContract.unpaidDayRate || '0') > 0
+      ? parseFloat(activeContract.unpaidDayRate)
+      : Math.round((fullMonthlyBasic / 30) * 1000) / 1000;
+  }
+
+  if (isDailyWorker) {
+    const calculatedDailyOt = dailyRate > 0 ? (dailyRate / 4) : 0;
+    otRate = Math.round(calculatedDailyOt * 1000) / 1000;
   }
 
   // Fetch attendance records within period to snapshot metrics
@@ -493,12 +525,40 @@ export async function createPayrollDraft(
     basicEarned = workedDays * dailyRate;
     allowancesEarned = 0;
   } else {
-    allowancesEarned = data.allowancesEarned !== undefined
-      ? data.allowancesEarned
-      : (activeContract?.monthlyAllowances && parseFloat(activeContract.monthlyAllowances) > 0
-          ? parseFloat(activeContract.monthlyAllowances)
-          : Math.max(0, 30 - totalUnpaidDays));
+    const fullMonthlyAllowances = activeContract?.monthlyAllowances && parseFloat(activeContract.monthlyAllowances) > 0
+      ? parseFloat(activeContract.monthlyAllowances)
+      : 30;
+    const dailyAllowanceRate = fullMonthlyAllowances > 0 ? (fullMonthlyAllowances / 30) : 1;
+
+    const effectiveStart = emp.startDate > periodStart ? emp.startDate : periodStart;
+    const effectiveEnd = emp.endDate && emp.endDate < periodEnd ? emp.endDate : periodEnd;
+    const isPartialMonth = effectiveStart > periodStart || Boolean(emp.endDate && emp.endDate < periodEnd);
+
+    if (data.allowancesEarned !== undefined) {
+      allowancesEarned = data.allowancesEarned;
+    } else if (isPartialMonth) {
+      const startMs = new Date(effectiveStart).getTime();
+      const endMs = new Date(effectiveEnd).getTime();
+      const activeServiceDays = Math.max(0, Math.min(30, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1));
+      const proratedAllowances = Math.round(dailyAllowanceRate * activeServiceDays * 1000) / 1000;
+      allowancesEarned = Math.max(0, proratedAllowances - (totalUnpaidDays * dailyAllowanceRate));
+    } else {
+      allowancesEarned = Math.max(0, fullMonthlyAllowances - (totalUnpaidDays * dailyAllowanceRate));
+    }
   }
+
+  // Dynamic minute deduction rate: basic / (30 * 8 * 60) = basic / 14400. For daily workers: dailyRate / 480
+  let dynamicMinuteRate = 0;
+  if (isDailyWorker) {
+    dynamicMinuteRate = dailyRate > 0 ? (dailyRate / 480) : 0;
+  } else {
+    const fullBasic = activeContract ? parseFloat(activeContract.monthlyBasic) : 0;
+    dynamicMinuteRate = fullBasic > 0 ? (fullBasic / 14400) : 0;
+  }
+
+  const minuteDeductionRate = emp.minuteDeductionRate
+    ? parseFloat(emp.minuteDeductionRate)
+    : (dynamicMinuteRate > 0 ? dynamicMinuteRate : (settings?.defaultMinuteDeductionRate ? parseFloat(settings.defaultMinuteDeductionRate) : 0));
 
   const lateDeduction = Math.round(lateMinutes * minuteDeductionRate * 1000) / 1000;
   const earlyDepartureDeduction = Math.round(earlyDepartureMinutes * minuteDeductionRate * 1000) / 1000;
@@ -593,9 +653,6 @@ export async function refreshPayrollDraft(actor: UserSession, payrollId: string)
 
   const [emp] = await db.select().from(schema.employees).where(eq(schema.employees.id, payrollRecord.employeeId));
   const settings = await getSystemSettings();
-  const minuteDeductionRate = emp?.minuteDeductionRate
-    ? parseFloat(emp.minuteDeductionRate)
-    : (settings?.defaultMinuteDeductionRate ? parseFloat(settings.defaultMinuteDeductionRate) : 0);
 
   // Refresh attendance snapshots
   const attendances = await db.select().from(schema.attendance).where(
@@ -613,13 +670,15 @@ export async function refreshPayrollDraft(actor: UserSession, payrollId: string)
   const totalOtHours = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.approvedOtHours || '0'), 0);
   const totalUnpaidDays = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.unpaidDays || '0'), 0);
 
-  const lateDeduction = Math.round(lateMinutes * minuteDeductionRate * 1000) / 1000;
-  const earlyDepartureDeduction = Math.round(earlyDepartureMinutes * minuteDeductionRate * 1000) / 1000;
-
   // Refresh linked loan repayments
   const totalLoanDeduction = await syncEmployeeLoanRepaymentsForPayroll(db, payrollRecord.employeeId, payrollId, payrollRecord.periodEnd, actor.id);
 
   let basicEarned = parseFloat(payrollRecord.basicEarned);
+  let allowancesEarned = parseFloat(payrollRecord.allowancesEarned || '0');
+  let fullMonthlyBasic = 0;
+  let dailyRate = parseFloat(payrollRecord.dailyRate || '0');
+  let activeContract: any = null;
+
   if (emp?.employmentType === 'DAILY_WORKER') {
     const historyRates = await db.select().from(schema.dailyRateHistory).where(
       and(
@@ -629,29 +688,74 @@ export async function refreshPayrollDraft(actor: UserSession, payrollId: string)
       )
     ).orderBy(desc(schema.dailyRateHistory.effectiveFrom));
 
-    const dailyRate = historyRates.length > 0 ? parseFloat(historyRates[0].dailyRate) : parseFloat(payrollRecord.dailyRate || '0');
+    dailyRate = historyRates.length > 0 ? parseFloat(historyRates[0].dailyRate) : parseFloat(payrollRecord.dailyRate || '0');
     basicEarned = workedDays * dailyRate;
-  }
-
-  // Contract rates for permanent
-  const calculatedOtRate = basicEarned > 0 ? ((basicEarned / 26) / 9) * 2 : 0;
-  let otRate = parseFloat(payrollRecord.otRate || '0');
-  let unpaidDayRate = parseFloat(payrollRecord.unpaidDayRate || '0');
-  if (payrollRecord.contractId) {
+    allowancesEarned = 0;
+  } else if (emp && payrollRecord.contractId) {
     const [contract] = await db.select().from(schema.contracts).where(eq(schema.contracts.id, payrollRecord.contractId));
     if (contract) {
-      otRate = (contract.otRate && parseFloat(contract.otRate) > 0) ? parseFloat(contract.otRate) : calculatedOtRate;
-      unpaidDayRate = parseFloat(contract.unpaidDayRate);
-    } else if (otRate <= 0) {
-      otRate = calculatedOtRate;
+      activeContract = contract;
+      fullMonthlyBasic = parseFloat(contract.monthlyBasic);
+      const fullMonthlyAllowances = contract.monthlyAllowances && parseFloat(contract.monthlyAllowances) > 0
+        ? parseFloat(contract.monthlyAllowances)
+        : 30;
+      const dailyAllowanceRate = fullMonthlyAllowances > 0 ? (fullMonthlyAllowances / 30) : 1;
+
+      const effectiveStart = emp.startDate > payrollRecord.periodStart ? emp.startDate : payrollRecord.periodStart;
+      const effectiveEnd = emp.endDate && emp.endDate < payrollRecord.periodEnd ? emp.endDate : payrollRecord.periodEnd;
+      const isPartialMonth = effectiveStart > payrollRecord.periodStart || Boolean(emp.endDate && emp.endDate < payrollRecord.periodEnd);
+
+      if (isPartialMonth) {
+        const startMs = new Date(effectiveStart).getTime();
+        const endMs = new Date(effectiveEnd).getTime();
+        const activeServiceDays = Math.max(0, Math.min(30, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1));
+        basicEarned = Math.round((fullMonthlyBasic / 30) * activeServiceDays * 1000) / 1000;
+        const proratedAllowances = Math.round(dailyAllowanceRate * activeServiceDays * 1000) / 1000;
+        allowancesEarned = Math.max(0, proratedAllowances - (totalUnpaidDays * dailyAllowanceRate));
+      } else {
+        basicEarned = fullMonthlyBasic;
+        allowancesEarned = Math.max(0, fullMonthlyAllowances - (totalUnpaidDays * dailyAllowanceRate));
+      }
     }
-  } else if (otRate <= 0) {
-    otRate = calculatedOtRate;
+  }
+
+  // Dynamic minute deduction rate: basic / (30 * 8 * 60) = basic / 14400. For daily workers: dailyRate / 480
+  let dynamicMinuteRate = 0;
+  if (emp?.employmentType === 'DAILY_WORKER') {
+    dynamicMinuteRate = dailyRate > 0 ? (dailyRate / 480) : 0;
+  } else {
+    const bSalary = fullMonthlyBasic > 0 ? fullMonthlyBasic : basicEarned;
+    dynamicMinuteRate = bSalary > 0 ? (bSalary / 14400) : 0;
+  }
+
+  const minuteDeductionRate = emp?.minuteDeductionRate
+    ? parseFloat(emp.minuteDeductionRate)
+    : (dynamicMinuteRate > 0 ? dynamicMinuteRate : (settings?.defaultMinuteDeductionRate ? parseFloat(settings.defaultMinuteDeductionRate) : 0));
+
+  const lateDeduction = Math.round(lateMinutes * minuteDeductionRate * 1000) / 1000;
+  const earlyDepartureDeduction = Math.round(earlyDepartureMinutes * minuteDeductionRate * 1000) / 1000;
+
+  // Dynamic OT rate: 1 OT hour = 2 normal hours based on basic salary (30 * 8 = 240 hrs) -> fullMonthlyBasic / 120
+  const calculatedOtRate = emp?.employmentType === 'DAILY_WORKER'
+    ? (dailyRate > 0 ? (dailyRate / 4) : 0)
+    : (fullMonthlyBasic > 0 ? (fullMonthlyBasic / 120) : (basicEarned > 0 ? (basicEarned / 120) : 0));
+  let otRate = parseFloat(payrollRecord.otRate || '0');
+  let unpaidDayRate = parseFloat(payrollRecord.unpaidDayRate || '0');
+  if (activeContract) {
+    otRate = (activeContract.otRate && parseFloat(activeContract.otRate) > 0 && parseFloat(activeContract.otRate) !== 2.5)
+      ? parseFloat(activeContract.otRate)
+      : Math.round(calculatedOtRate * 1000) / 1000;
+    unpaidDayRate = parseFloat(activeContract.unpaidDayRate || '0') > 0
+      ? parseFloat(activeContract.unpaidDayRate)
+      : Math.round(((fullMonthlyBasic > 0 ? fullMonthlyBasic : basicEarned) / 30) * 1000) / 1000;
+  } else if (otRate <= 0 || otRate === 2.5) {
+    otRate = Math.round(calculatedOtRate * 1000) / 1000;
   }
 
   const [updated] = await db.update(schema.payroll)
     .set({
       basicEarned: basicEarned.toFixed(3),
+      allowancesEarned: allowancesEarned.toFixed(3),
       workedDays,
       workedMinutes,
       lateMinutes,
@@ -937,16 +1041,27 @@ export async function generateBulkPayrollDrafts(
   requireRole(actor, ['ADMIN', 'ACCOUNTANT']);
   const db = getDb();
 
-  const activeEmployees = await db
+  const paddedMonth = String(data.month).padStart(2, '0');
+  const periodStart = `${data.year}-${paddedMonth}-01`;
+  const lastDay = new Date(Date.UTC(data.year, data.month, 0)).getUTCDate();
+  const periodEnd = `${data.year}-${paddedMonth}-${String(lastDay).padStart(2, '0')}`;
+
+  const eligibleEmployees = await db
     .select()
     .from(schema.employees)
-    .where(eq(schema.employees.status, 'ACTIVE'));
+    .where(
+      and(
+        lte(schema.employees.startDate, periodEnd),
+        sql`(${schema.employees.endDate} IS NULL OR ${schema.employees.endDate} >= ${periodStart})`,
+        sql`(${schema.employees.status} = 'ACTIVE' OR (${schema.employees.endDate} IS NOT NULL AND ${schema.employees.endDate} >= ${periodStart}))`
+      )
+    );
 
   let successCount = 0;
   let skippedCount = 0;
   const errors: { employeeId: string; employeeName: string; reason: string }[] = [];
 
-  for (const emp of activeEmployees) {
+  for (const emp of eligibleEmployees) {
     try {
       await createPayrollDraft(actor, {
         employeeId: emp.id,
@@ -975,7 +1090,7 @@ export async function generateBulkPayrollDrafts(
     metadata: {
       year: data.year,
       month: data.month,
-      totalActive: activeEmployees.length,
+      totalActive: eligibleEmployees.length,
       successCount,
       skippedCount,
       errorCount: errors.length,
@@ -983,7 +1098,7 @@ export async function generateBulkPayrollDrafts(
   });
 
   return {
-    totalActiveCount: activeEmployees.length,
+    totalActiveCount: eligibleEmployees.length,
     successCount,
     skippedCount,
     errors,
@@ -1015,9 +1130,26 @@ export async function updatePayrollDraft(
 
   const [emp] = await db.select().from(schema.employees).where(eq(schema.employees.id, payrollRecord.employeeId));
   const settings = await getSystemSettings();
+
+  // Dynamic minute deduction rate: basic / (30 * 8 * 60) = basic / 14400. For daily workers: dailyRate / 480
+  let dynamicMinuteRate = 0;
+  if (emp?.employmentType === 'DAILY_WORKER') {
+    const dRate = parseFloat(payrollRecord.dailyRate || '0');
+    dynamicMinuteRate = dRate > 0 ? (dRate / 480) : 0;
+  } else {
+    let bSalary = parseFloat(payrollRecord.basicEarned || '0');
+    if (payrollRecord.contractId) {
+      const [contract] = await db.select().from(schema.contracts).where(eq(schema.contracts.id, payrollRecord.contractId));
+      if (contract && parseFloat(contract.monthlyBasic) > 0) {
+        bSalary = parseFloat(contract.monthlyBasic);
+      }
+    }
+    dynamicMinuteRate = bSalary > 0 ? (bSalary / 14400) : 0;
+  }
+
   const minuteDeductionRate = emp?.minuteDeductionRate
     ? parseFloat(emp.minuteDeductionRate)
-    : (settings?.defaultMinuteDeductionRate ? parseFloat(settings.defaultMinuteDeductionRate) : 0);
+    : (dynamicMinuteRate > 0 ? dynamicMinuteRate : (settings?.defaultMinuteDeductionRate ? parseFloat(settings.defaultMinuteDeductionRate) : 0));
 
   const updatedGratuities = data.gratuities !== undefined ? data.gratuities : parseFloat(payrollRecord.gratuities || '0');
   const updatedOtherAdditions = data.otherAdditions !== undefined ? data.otherAdditions : parseFloat(payrollRecord.otherAdditions);

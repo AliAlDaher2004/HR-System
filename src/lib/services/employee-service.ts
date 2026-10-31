@@ -392,13 +392,12 @@ export async function createEmployee(
   if ((empType === 'PERMANENT' || empType === 'PROBATIONARY') && data.monthlyBasic !== undefined && data.monthlyBasic !== null && data.monthlyBasic > 0) {
     const basic = Number(data.monthlyBasic);
     const allowances = data.monthlyAllowances ? Number(data.monthlyAllowances) : 0;
-    const total = basic + allowances;
     const unpaidDayRate = data.unpaidDayRate !== undefined && data.unpaidDayRate !== null
       ? Number(data.unpaidDayRate)
-      : Math.round((total / 30) * 1000) / 1000;
+      : Math.round((basic / 30) * 1000) / 1000;
     const otRate = data.otRate !== undefined && data.otRate !== null
       ? Number(data.otRate)
-      : Math.round(((total / 240) * 1.5) * 1000) / 1000;
+      : Math.round((basic / 120) * 1000) / 1000;
 
     const isSigned = data.contractSigned !== undefined ? Boolean(data.contractSigned) : (empType === 'PERMANENT');
     const signedDate = isSigned ? (data.contractSignedDate || data.startDate) : null;
@@ -817,13 +816,12 @@ export async function transitionProbationToPermanent(
   if (contractDetails?.monthlyBasic && contractDetails.monthlyBasic > 0) {
     const basic = Number(contractDetails.monthlyBasic);
     const allowances = contractDetails.monthlyAllowances ? Number(contractDetails.monthlyAllowances) : 0;
-    const total = basic + allowances;
     const unpaidDayRate = contractDetails.unpaidDayRate !== undefined
       ? Number(contractDetails.unpaidDayRate)
-      : Math.round((total / 30) * 1000) / 1000;
+      : Math.round((basic / 30) * 1000) / 1000;
     const otRate = contractDetails.otRate !== undefined
       ? Number(contractDetails.otRate)
-      : Math.round(((total / 240) * 1.5) * 1000) / 1000;
+      : Math.round((basic / 120) * 1000) / 1000;
 
     const { createContract } = await import('./contract-service');
     await createContract(actor, {

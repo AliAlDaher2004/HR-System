@@ -39,7 +39,7 @@ export default async function SettingsPage() {
       : null;
     const defaultOtRate = formData.get('defaultOtRate')
       ? parseFloat(formData.get('defaultOtRate') as string)
-      : 2.500;
+      : null;
 
     const currentDb = getDb();
     const [existing] = await currentDb.select().from(schema.settings).limit(1);
@@ -56,8 +56,8 @@ export default async function SettingsPage() {
           defaultWorkStartTime,
           defaultWorkEndTime,
           defaultBreakMinutes,
-          defaultMinuteDeductionRate: defaultMinuteDeductionRate !== null ? defaultMinuteDeductionRate.toFixed(3) : null,
-          defaultOtRate: defaultOtRate.toFixed(3),
+          defaultMinuteDeductionRate: defaultMinuteDeductionRate !== null && !isNaN(defaultMinuteDeductionRate) ? defaultMinuteDeductionRate.toFixed(3) : '0.000',
+          defaultOtRate: defaultOtRate !== null && !isNaN(defaultOtRate) ? defaultOtRate.toFixed(3) : '0.000',
           updatedBy: currentUser.id,
           updatedAt: new Date(),
         })
@@ -215,35 +215,65 @@ export default async function SettingsPage() {
               </div>
 
               <div>
-                <label className="block font-bold text-black mb-0.5">سعر خصم الدقيقة الافتراضي</label>
+                <label className="block font-bold text-black mb-0.5">سعر خصم الدقيقة الموحد (اختياري)</label>
                 <input
                   type="number"
                   step="0.001"
                   min="0"
                   name="defaultMinuteDeductionRate"
-                  defaultValue={settings?.defaultMinuteDeductionRate ? Number(settings.defaultMinuteDeductionRate).toFixed(3) : '0.500'}
-                  required
+                  defaultValue={settings?.defaultMinuteDeductionRate && parseFloat(settings.defaultMinuteDeductionRate) > 0 ? Number(settings.defaultMinuteDeductionRate).toFixed(3) : ''}
+                  placeholder="ديناميكي من الراتب الأساسي"
                   className="win-input w-full py-1 px-2 font-mono font-bold"
                 />
                 <span className="text-[10px] text-slate-500 block mt-0.5">
-                  يُطبق في حال عدم تحديد سعر مخصص في ملف الموظف.
+                  افتراضياً: يُحسب ديناميكياً (الراتب الأساسي ÷ 14,400 دقيقة). يُعبأ فقط لفرض سعر ثابت موحد.
                 </span>
               </div>
 
               <div>
-                <label className="block font-bold text-black mb-0.5">سعر/معدل أجر الساعة الإضافية (د.أ/ساعة) *</label>
+                <label className="block font-bold text-black mb-0.5">سعر أجر الساعة الإضافية الموحد (اختياري)</label>
                 <input
                   type="number"
                   step="0.001"
                   min="0"
                   name="defaultOtRate"
-                  defaultValue={settings?.defaultOtRate ? Number(settings.defaultOtRate).toFixed(3) : '2.500'}
-                  required
+                  defaultValue={settings?.defaultOtRate && parseFloat(settings.defaultOtRate) > 0 && parseFloat(settings.defaultOtRate) !== 2.5 ? Number(settings.defaultOtRate).toFixed(3) : ''}
+                  placeholder="ديناميكي من الراتب الأساسي"
                   className="win-input w-full py-1 px-2 font-mono font-bold text-purple-900 bg-purple-50"
                 />
                 <span className="text-[10px] text-purple-700 block mt-0.5 font-semibold">
-                  سعر أجر الساعة الإضافية المعتمد للشركة لتطبيق الاحتساب الآلي في الرواتب.
+                  افتراضياً: يُحسب ديناميكياً (ساعة الإضافي = ساعتان عادية = الأساسي ÷ 120).
                 </span>
+              </div>
+            </div>
+
+            {/* Dynamic Formula Policy Banner */}
+            <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-400 rounded text-xs space-y-1.5 text-slate-800 mt-2">
+              <div className="font-bold text-blue-900 flex items-center gap-1.5 text-xs">
+                <span>💡</span>
+                <span>قاعدة الاحتساب الديناميكي المعتمدة بالشركة (تعتمد على الراتب الأساسي لكل عامل):</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-[11px] pt-1">
+                <div className="p-2 bg-white rounded border border-blue-200">
+                  <span className="font-bold text-purple-900 block">⚡ أجر الساعة الإضافية:</span>
+                  <span className="text-slate-700">ساعتان عادية = <strong>الأساسي ÷ 120</strong></span>
+                  <span className="text-[10px] text-slate-500 block mt-0.5">راتب 290 د.أ = 2.417 د.أ/س | راتب 500 د.أ = 4.167 د.أ/س</span>
+                </div>
+                <div className="p-2 bg-white rounded border border-amber-200">
+                  <span className="font-bold text-amber-900 block">⏱️ خصم دقيقة التأخير:</span>
+                  <span className="text-slate-700"><strong>الأساسي ÷ 14,400 دقيقة</strong></span>
+                  <span className="text-[10px] text-slate-500 block mt-0.5">راتب 290 د.أ = 0.020 د.أ/د | راتب 500 د.أ = 0.035 د.أ/د</span>
+                </div>
+                <div className="p-2 bg-white rounded border border-rose-200">
+                  <span className="font-bold text-rose-900 block">❌ خصم يوم الغياب:</span>
+                  <span className="text-slate-700"><strong>(الأساسي ÷ 30) + (1 د.أ بدل)</strong></span>
+                  <span className="text-[10px] text-slate-500 block mt-0.5">يُخصم يوم من الأساسي و 1 دينار من بدل المواصلات (30 د.أ)</span>
+                </div>
+                <div className="p-2 bg-white rounded border border-emerald-200">
+                  <span className="font-bold text-emerald-900 block">🕌 يوم الجمعة (العطلة):</span>
+                  <span className="text-slate-700"><strong>عطلة رسمية مدفوعة</strong></span>
+                  <span className="text-[10px] text-slate-500 block mt-0.5">عدم الحضور لا يُخصم، والعمل به يُحتسب إضافياً بالكامل</span>
+                </div>
               </div>
             </div>
           </fieldset>

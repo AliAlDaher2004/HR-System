@@ -23,8 +23,11 @@ import {
   detectShift,
   bulkMarkPresentForDate,
   approveAllDailyAttendance,
+  getDailyAttendanceSheet,
+  updateOvertimeHours,
 } from '../src/lib/services/attendance-service';
 import {
+  computeNetPayroll,
   createPayrollDraft,
   generateBulkPayrollDrafts,
   updatePayrollDraft,
@@ -989,6 +992,49 @@ describe('HR & Payroll Production Business Rules & Specification Test Suite', ()
       expect(updated.notes).toBe('Adjusted overtime and early departure manually');
     });
 
+    it('Rule 33b: Prorate salary and allowances for employee terminated mid-month (2 days active = 2/30 basic + 2 JOD transport) and preserve historical attendance', async () => {
+      const emp = await createEmployee(adminUser, {
+        employeeNo: 'EMP-TERM-02',
+        name: 'عامل خدمة منتهية',
+        department: 'Operations',
+        jobTitle: 'عامل',
+        startDate: '2026-10-01',
+        endDate: '2026-10-02',
+        employmentType: 'PERMANENT',
+      });
+
+      await createContract(adminUser, {
+        employeeId: emp.id,
+        startDate: '2026-10-01',
+        monthlyBasic: 290,
+        monthlyAllowances: 30,
+        unpaidDayRate: 9.667,
+        otRate: 2.5,
+      });
+
+      // Daily attendance: Active on 2026-10-01 and 2026-10-02, but NOT on 2026-10-03
+      const sheetOct1 = await getDailyAttendanceSheet(adminUser, '2026-10-01');
+      expect(sheetOct1.some((r: any) => r.employee.id === emp.id)).toBe(true);
+
+      const sheetOct2 = await getDailyAttendanceSheet(adminUser, '2026-10-02');
+      expect(sheetOct2.some((r: any) => r.employee.id === emp.id)).toBe(true);
+
+      const sheetOct3 = await getDailyAttendanceSheet(adminUser, '2026-10-03');
+      expect(sheetOct3.some((r: any) => r.employee.id === emp.id)).toBe(false);
+
+      // Create payroll draft for October 2026
+      const draft = await createPayrollDraft(adminUser, {
+        employeeId: emp.id,
+        year: 2026,
+        month: 10,
+      });
+
+      // 2 days active = (290 / 30) * 2 = 19.333 basic, and (30 / 30) * 2 = 2.000 allowance
+      expect(parseFloat(draft.basicEarned)).toBe(19.333);
+      expect(parseFloat(draft.allowancesEarned)).toBe(2);
+      expect(parseFloat(draft.grossPay)).toBe(21.333);
+    });
+
     it('Rule 34: getBatchPayslipData returns complete itemized statements for all employees in a batch', async () => {
       const emp = await createEmployee(adminUser, {
         employeeNo: 'EMP-BATCH-PS-01',
@@ -1265,6 +1311,154 @@ describe('HR & Payroll Production Business Rules & Specification Test Suite', ()
 
       const earlyDep = await recordEarlyDeparture(adminUser, att.id, '16:00', 'شخصي');
       expect(earlyDep.earlyDepartureMinutes).toBe(60); // 17:00 - 16:00 = 60 mins
+    });
+
+    it('Rule 45: Dynamic Overtime Rate Calculation (1 OT hour = 2 normal hours based on basic salary -> basic / 120)', async () => {
+      // 1. Worker with 290 basic: 290 / 120 = 2.417 JOD/hr
+      const emp290 = await createEmployee(adminUser, {
+        employeeNo: 'EMP-OT-290',
+        name: 'عامل راتب 290',
+        department: 'الإنتاج',
+        jobTitle: 'عامل خط',
+        startDate: '2026-01-01',
+        employmentType: 'PERMANENT',
+        monthlyBasic: 290,
+      });
+
+      const draft290 = await createPayrollDraft(adminUser, {
+        employeeId: emp290.id,
+        year: 2026,
+        month: 10,
+      });
+      // 290 / 120 = 2.41666... -> 2.417
+      expect(parseFloat(draft290.otRate)).toBeCloseTo(2.417, 3);
+
+      // computeNetPayroll verification for 4 OT hours
+      const net290 = computeNetPayroll({
+        employmentType: 'PERMANENT',
+        basicEarned: 290,
+        otHours: 4,
+      });
+      expect(net290.otRate).toBeCloseTo(2.417, 3);
+      expect(net290.otTotal).toBeCloseTo(4 * 2.417, 2);
+
+      // 2. Worker with 500 basic: 500 / 120 = 4.167 JOD/hr
+      const emp500 = await createEmployee(adminUser, {
+        employeeNo: 'EMP-OT-500',
+        name: 'عامل راتب 500',
+        department: 'الصيانة',
+        jobTitle: 'فني',
+        startDate: '2026-01-01',
+        employmentType: 'PERMANENT',
+        monthlyBasic: 500,
+      });
+
+      const draft500 = await createPayrollDraft(adminUser, {
+        employeeId: emp500.id,
+        year: 2026,
+        month: 10,
+      });
+      // 500 / 120 = 4.1666... -> 4.167
+      expect(parseFloat(draft500.otRate)).toBeCloseTo(4.167, 3);
+
+      const net500 = computeNetPayroll({
+        employmentType: 'PERMANENT',
+        basicEarned: 500,
+        otHours: 4,
+      });
+      expect(net500.otRate).toBeCloseTo(4.167, 3);
+      expect(net500.otTotal).toBeCloseTo(4 * 4.167, 2);
+    });
+
+    it('Rule 46: Dynamic Minute Deduction Rate (basic / (30 * 8 * 60) = basic / 14400)', async () => {
+      // 1. Worker with 290 basic: 290 / 14400 = 0.020138... JOD/min
+      const emp290 = await createEmployee(adminUser, {
+        employeeNo: 'EMP-MIN-290',
+        name: 'عامل خصم 290',
+        department: 'الإنتاج',
+        jobTitle: 'عامل',
+        startDate: '2026-01-01',
+        employmentType: 'PERMANENT',
+        monthlyBasic: 290,
+      });
+
+      // Mark 30 minutes late on a work day
+      await markLate(adminUser, emp290.id, '2026-09-01', '08:30');
+
+      const draft290 = await createPayrollDraft(adminUser, {
+        employeeId: emp290.id,
+        year: 2026,
+        month: 9,
+      });
+      // 30 mins * (290 / 14400) = 0.60416... -> 0.604 JOD
+      expect(parseFloat(draft290.lateDeduction)).toBeCloseTo(0.604, 3);
+
+      // 2. Worker with 500 basic: 500 / 14400 = 0.034722... JOD/min
+      const emp500 = await createEmployee(adminUser, {
+        employeeNo: 'EMP-MIN-500',
+        name: 'عامل خصم 500',
+        department: 'الصيانة',
+        jobTitle: 'مشرف',
+        startDate: '2026-01-01',
+        employmentType: 'PERMANENT',
+        monthlyBasic: 500,
+      });
+
+      // Mark 30 minutes late on a work day
+      await markLate(adminUser, emp500.id, '2026-09-01', '08:30');
+
+      const draft500 = await createPayrollDraft(adminUser, {
+        employeeId: emp500.id,
+        year: 2026,
+        month: 9,
+      });
+      // 30 mins * (500 / 14400) = 1.04166... -> 1.042 JOD
+      expect(parseFloat(draft500.lateDeduction)).toBeCloseTo(1.042, 3);
+    });
+
+    it('Rule 47: Friday is paid official rest day; unmarked Friday does NOT deduct, and worked Friday credits overtime', async () => {
+      const emp = await createEmployee(adminUser, {
+        employeeNo: 'EMP-FRI-01',
+        name: 'عامل دوام جمعة',
+        department: 'التوزيع',
+        jobTitle: 'سائق',
+        startDate: '2026-01-01',
+        employmentType: 'PERMANENT',
+        monthlyBasic: 290,
+      });
+
+      // 2026-10-30 is a Friday
+      const fridayDate = '2026-10-30';
+      const sheet = await getDailyAttendanceSheet(adminUser, fridayDate);
+      const row = sheet.find((r: any) => r.employee.id === emp.id);
+      expect(row).toBeDefined();
+      expect(row.isMarked).toBe(false);
+
+      // Without attendance logged on Friday: payroll has 0 unpaid days
+      const draftUnmarked = await createPayrollDraft(adminUser, {
+        employeeId: emp.id,
+        year: 2026,
+        month: 10,
+      });
+      expect(parseFloat(draftUnmarked.unpaidDays)).toBe(0);
+      expect(parseFloat(draftUnmarked.basicEarned)).toBe(290);
+      expect(parseFloat(draftUnmarked.allowancesEarned)).toBe(30);
+
+      // Delete draft to test logging overtime on Friday
+      await deletePayrollRun(adminUser, draftUnmarked.id);
+
+      // Log 5 overtime hours on Friday
+      await updateOvertimeHours(adminUser, emp.id, fridayDate, 5);
+
+      const draftWithOt = await createPayrollDraft(adminUser, {
+        employeeId: emp.id,
+        year: 2026,
+        month: 10,
+      });
+      expect(parseFloat(draftWithOt.otHours)).toBe(5);
+      expect(parseFloat(draftWithOt.otRate)).toBeCloseTo(2.417, 3);
+      expect(parseFloat(draftWithOt.unpaidDays)).toBe(0);
+      expect(parseFloat(draftWithOt.basicEarned)).toBe(290);
     });
   });
 });
