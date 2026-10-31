@@ -58,7 +58,7 @@ export function EditPayrollDraftModal({
     : calculatedOtRate;
 
   const otTotal = otHours * otRate;
-  const transportationAllowance = isDailyWorker ? 0 : Math.max(0, 30 - unpaidDays);
+  const transportationAllowance = isDailyWorker ? 0 : (payroll.allowancesEarned !== undefined && Number(payroll.allowancesEarned) >= 0 && Number(payroll.allowancesEarned) !== 30 ? Number(payroll.allowancesEarned) : Math.max(0, 30 - unpaidDays));
   const grossPay = basicEarned + transportationAllowance + gratuities + otTotal;
 
   const unpaidDayRate = Number(payroll.unpaidDayRate || (basicEarned > 0 ? basicEarned / 26 : 0));

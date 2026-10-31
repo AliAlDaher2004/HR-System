@@ -69,11 +69,14 @@ export default async function PayrollPage({
       : Number(p.basicEarned || 0);
 
     const unpaidDaysVal = Number(p.unpaidDays || 0);
-    const transportVal = isDailyWorker ? 0 : Math.max(0, 30 - unpaidDaysVal);
+    const transportVal = isDailyWorker ? 0 : (p.allowancesEarned !== undefined && p.allowancesEarned !== null ? Number(p.allowancesEarned) : Math.max(0, 30 - unpaidDaysVal));
     const gratuitiesVal = Number(p.gratuities || 0);
     const otHoursVal = Number(p.otHours || 0);
-    const calculatedOtRate = basicEarnedVal > 0 ? ((basicEarnedVal / 26) / 9) * 2 : 0;
-    const otRateVal = Number(p.otRate || 0) > 0 && Number(p.otRate || 0) !== 2.5 ? Number(p.otRate) : calculatedOtRate;
+    const calculatedOtRate = isDailyWorker
+      ? (Number(p.dailyRate || 0) > 0 ? (Number(p.dailyRate || 0) / 4) : 0)
+      : (basicEarnedVal > 0 ? (basicEarnedVal / 120) : 0);
+    const rawOtRate = Number(p.otRate || 0);
+    const otRateVal = rawOtRate > 0 && !isLegacyOtRate(rawOtRate) ? rawOtRate : calculatedOtRate;
     const otTotalVal = p.otTotal !== undefined && Number(p.otTotal) > 0 ? Number(p.otTotal) : Math.round(otHoursVal * otRateVal * 100) / 100;
     const grossPayVal = basicEarnedVal + transportVal + gratuitiesVal + otTotalVal;
 
@@ -92,7 +95,7 @@ export default async function PayrollPage({
 
     const otherDeductionsVal = Number(p.otherDeductions || 0);
     const totalDeductionsVal = socialSecurityVal + loansVal + unpaidDeductionVal + earlyDepartureDeductionVal + lateDeductionVal + otherDeductionsVal;
-    const netVal = p.netPay ? Number(p.netPay) : grossPayVal - totalDeductionsVal;
+    const netVal = p.netPay ? Number(p.netPay) : (p.netPreview ? Number(p.netPreview) : grossPayVal - totalDeductionsVal);
 
     totalBasicEarned += basicEarnedVal;
     totalTransport += transportVal;
@@ -394,7 +397,7 @@ export default async function PayrollPage({
                   : Number(p.basicEarned || 0);
 
                 const unpaidDaysVal = Number(p.unpaidDays || 0);
-                const transportVal = isDailyWorker ? 0 : Math.max(0, 30 - unpaidDaysVal);
+                const transportVal = isDailyWorker ? 0 : (p.allowancesEarned !== undefined && p.allowancesEarned !== null ? Number(p.allowancesEarned) : Math.max(0, 30 - unpaidDaysVal));
                 const gratuitiesVal = Number(p.gratuities || 0);
                 const otHoursVal = Number(p.otHours || 0);
                 const calculatedOtRate = isDailyWorker
@@ -420,7 +423,7 @@ export default async function PayrollPage({
 
                 const otherDeductionsVal = Number(p.otherDeductions || 0);
                 const totalDeductionsVal = socialSecurityVal + loansVal + unpaidDeductionVal + earlyDepartureDeductionVal + lateDeductionVal + otherDeductionsVal;
-                const netVal = p.netPay ? Number(p.netPay) : grossPayVal - totalDeductionsVal;
+                const netVal = p.netPay ? Number(p.netPay) : (p.netPreview ? Number(p.netPreview) : grossPayVal - totalDeductionsVal);
 
                 return (
                   <tr key={p.id} className="hover:bg-[#E8EEF7] divide-x divide-x-reverse divide-slate-200 group">

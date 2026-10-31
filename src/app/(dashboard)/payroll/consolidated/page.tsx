@@ -35,7 +35,7 @@ export default async function ConsolidatedPayrollPage({
     // Fixed 30 JOD transportation allowance minus 1 JOD per absence day
     const transportationAllowance = p.employmentType === 'DAILY_WORKER'
       ? 0
-      : Math.max(0, 30 - unpaidDays);
+      : (p.allowancesEarned !== undefined && p.allowancesEarned !== null ? Number(p.allowancesEarned) : Math.max(0, 30 - unpaidDays));
 
     const gratuities = Number(p.gratuities || 0);
     const otHours = Number(p.otHours || 0);

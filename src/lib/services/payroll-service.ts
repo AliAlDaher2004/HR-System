@@ -1224,9 +1224,22 @@ export async function updatePayrollDraft(
   const lateDeduction = Math.round(updatedLateMinutes * minuteDeductionRate * 1000) / 1000;
   const earlyDepartureDeduction = Math.round(updatedEarlyDepartureMinutes * minuteDeductionRate * 1000) / 1000;
 
-  // Update allowances earned: 30 JOD minus 1 JOD per absence day for permanent workers
+  // Update allowances earned: 30 JOD minus 1 JOD per absence day for permanent workers (prorated for partial tenure)
   const isDailyWorker = emp?.employmentType === 'DAILY_WORKER';
-  const updatedAllowancesEarned = isDailyWorker ? 0 : Math.max(0, 30 - updatedUnpaidDays);
+  let updatedAllowancesEarned = 0;
+  if (!isDailyWorker) {
+    const effectiveStart = emp ? (emp.startDate > payrollRecord.periodStart ? emp.startDate : payrollRecord.periodStart) : payrollRecord.periodStart;
+    const effectiveEnd = emp && emp.endDate && emp.endDate < payrollRecord.periodEnd ? emp.endDate : payrollRecord.periodEnd;
+    const isPartial = effectiveStart > payrollRecord.periodStart || Boolean(emp?.endDate && emp.endDate < payrollRecord.periodEnd);
+    if (isPartial) {
+      const startMs = new Date(effectiveStart).getTime();
+      const endMs = new Date(effectiveEnd).getTime();
+      const activeDays = Math.max(0, Math.min(30, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1));
+      updatedAllowancesEarned = Math.max(0, activeDays - updatedUnpaidDays);
+    } else {
+      updatedAllowancesEarned = Math.max(0, 30 - updatedUnpaidDays);
+    }
+  }
 
   const totalLoanDeduction = await syncEmployeeLoanRepaymentsForPayroll(db, payrollRecord.employeeId, data.payrollId, payrollRecord.periodEnd, actor.id);
 
