@@ -150,7 +150,11 @@ export default async function PayrollDetailPage({
             <div className="text-[11px] text-[#505050]">
               {payroll.jobTitle} - {payroll.department} | الرقم الوظيفي: {payroll.employeeNo} |{' '}
               <span className="font-bold text-black">
-                {isDailyWorker ? 'عامل مياومة' : 'موظف مثبت'}
+                {payroll.employmentType === 'DAILY_WORKER'
+                  ? 'عامل مياومة'
+                  : payroll.employmentType === 'PROBATIONARY'
+                  ? 'موظف تجريبي (تحت التجربة)'
+                  : 'موظف مثبت'}
               </span>
             </div>
           </div>
@@ -164,6 +168,18 @@ export default async function PayrollDetailPage({
           <ul className="list-disc list-inside space-y-0.5 font-medium">
             {completeness.errors.map((err, i) => (
               <li key={i}>{err}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Non-blocking notices */}
+      {isDraft && completeness.warnings && completeness.warnings.length > 0 && (
+        <div className="win-sunken p-2 bg-blue-50 border border-blue-300 text-blue-950 text-xs">
+          <strong className="block font-bold mb-0.5">ℹ تنبيه مسودة الحضور:</strong>
+          <ul className="list-disc list-inside space-y-0.5">
+            {completeness.warnings.map((w, i) => (
+              <li key={i}>{w}</li>
             ))}
           </ul>
         </div>

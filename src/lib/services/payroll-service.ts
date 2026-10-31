@@ -31,6 +31,14 @@ export interface NetCalculationResult {
   netPreview: number;
 }
 
+export function isLegacyOtRate(rate: number): boolean {
+  if (!rate || rate <= 0) return true;
+  if (rate === 2.5) return true;
+  if (Math.abs(rate - 1.813) < 0.005) return true;
+  if (Math.abs(rate - 1.812) < 0.005) return true;
+  return false;
+}
+
 export function computeNetPayroll(values: {
   employmentType?: 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER';
   workedDays?: number;
@@ -60,7 +68,7 @@ export function computeNetPayroll(values: {
   const calculatedOtRate = isDailyWorker
     ? (values.dailyRate && values.dailyRate > 0 ? (values.dailyRate / 4) : 0)
     : (basicEarned > 0 ? (basicEarned / 120) : 0);
-  const otRate = (values.otRate && values.otRate > 0 && values.otRate !== 2.5) ? values.otRate : Math.round(calculatedOtRate * 1000) / 1000;
+  const otRate = (values.otRate && values.otRate > 0 && !isLegacyOtRate(values.otRate)) ? values.otRate : Math.round(calculatedOtRate * 1000) / 1000;
   const gratuities = values.gratuities ?? 0;
   const otherAdditions = values.otherAdditions ?? 0;
   const unpaidDays = values.unpaidDays ?? 0;
@@ -492,8 +500,9 @@ export async function createPayrollDraft(
 
     // Dynamic OT rate: 1 OT hour = 2 normal hours based on basic salary (30 days * 8 hours = 240 hours) -> fullMonthlyBasic / 120
     const calculatedOtRate = fullMonthlyBasic > 0 ? (fullMonthlyBasic / 120) : 0;
-    otRate = (activeContract.otRate && parseFloat(activeContract.otRate) > 0 && parseFloat(activeContract.otRate) !== 2.5)
-      ? parseFloat(activeContract.otRate)
+    const contractOtRate = activeContract.otRate ? parseFloat(activeContract.otRate) : 0;
+    otRate = (contractOtRate > 0 && !isLegacyOtRate(contractOtRate))
+      ? contractOtRate
       : Math.round(calculatedOtRate * 1000) / 1000;
     unpaidDayRate = parseFloat(activeContract.unpaidDayRate || '0') > 0
       ? parseFloat(activeContract.unpaidDayRate)
@@ -505,12 +514,15 @@ export async function createPayrollDraft(
     otRate = Math.round(calculatedDailyOt * 1000) / 1000;
   }
 
-  // Fetch attendance records within period to snapshot metrics
+  const effectiveStart = emp.startDate > periodStart ? emp.startDate : periodStart;
+  const effectiveEnd = emp.endDate && emp.endDate < periodEnd ? emp.endDate : periodEnd;
+
+  // Fetch attendance records within effective service period to snapshot metrics
   const attendances = await db.select().from(schema.attendance).where(
     and(
       eq(schema.attendance.employeeId, data.employeeId),
-      gte(schema.attendance.workDate, periodStart),
-      lte(schema.attendance.workDate, periodEnd)
+      gte(schema.attendance.workDate, effectiveStart),
+      lte(schema.attendance.workDate, effectiveEnd)
     )
   );
 
@@ -654,12 +666,15 @@ export async function refreshPayrollDraft(actor: UserSession, payrollId: string)
   const [emp] = await db.select().from(schema.employees).where(eq(schema.employees.id, payrollRecord.employeeId));
   const settings = await getSystemSettings();
 
-  // Refresh attendance snapshots
+  const effectiveStart = emp ? (emp.startDate > payrollRecord.periodStart ? emp.startDate : payrollRecord.periodStart) : payrollRecord.periodStart;
+  const effectiveEnd = emp && emp.endDate && emp.endDate < payrollRecord.periodEnd ? emp.endDate : payrollRecord.periodEnd;
+
+  // Refresh attendance snapshots within effective service period
   const attendances = await db.select().from(schema.attendance).where(
     and(
       eq(schema.attendance.employeeId, payrollRecord.employeeId),
-      gte(schema.attendance.workDate, payrollRecord.periodStart),
-      lte(schema.attendance.workDate, payrollRecord.periodEnd)
+      gte(schema.attendance.workDate, effectiveStart),
+      lte(schema.attendance.workDate, effectiveEnd)
     )
   );
 
@@ -742,13 +757,14 @@ export async function refreshPayrollDraft(actor: UserSession, payrollId: string)
   let otRate = parseFloat(payrollRecord.otRate || '0');
   let unpaidDayRate = parseFloat(payrollRecord.unpaidDayRate || '0');
   if (activeContract) {
-    otRate = (activeContract.otRate && parseFloat(activeContract.otRate) > 0 && parseFloat(activeContract.otRate) !== 2.5)
-      ? parseFloat(activeContract.otRate)
+    const contractOtRate = activeContract.otRate ? parseFloat(activeContract.otRate) : 0;
+    otRate = (contractOtRate > 0 && !isLegacyOtRate(contractOtRate))
+      ? contractOtRate
       : Math.round(calculatedOtRate * 1000) / 1000;
     unpaidDayRate = parseFloat(activeContract.unpaidDayRate || '0') > 0
       ? parseFloat(activeContract.unpaidDayRate)
       : Math.round(((fullMonthlyBasic > 0 ? fullMonthlyBasic : basicEarned) / 30) * 1000) / 1000;
-  } else if (otRate <= 0 || otRate === 2.5) {
+  } else if (isLegacyOtRate(otRate)) {
     otRate = Math.round(calculatedOtRate * 1000) / 1000;
   }
 
@@ -785,15 +801,17 @@ export async function refreshPayrollDraft(actor: UserSession, payrollId: string)
 export async function validatePayrollCompleteness(payrollId: string): Promise<{
   isValid: boolean;
   errors: string[];
+  warnings: string[];
   expectedDays: number;
   actualDays: number;
 }> {
   const db = getDb();
   const errors: string[] = [];
+  const warnings: string[] = [];
 
   const [payrollRecord] = await db.select().from(schema.payroll).where(eq(schema.payroll.id, payrollId));
   if (!payrollRecord) {
-    return { isValid: false, errors: ['كشف الراتب غير موجود'], expectedDays: 0, actualDays: 0 };
+    return { isValid: false, errors: ['كشف الراتب غير موجود'], warnings: [], expectedDays: 0, actualDays: 0 };
   }
 
   // 1. Check PayrollPolicyConfirmed
@@ -806,7 +824,7 @@ export async function validatePayrollCompleteness(payrollId: string): Promise<{
   const [emp] = await db.select().from(schema.employees).where(eq(schema.employees.id, payrollRecord.employeeId));
   if (!emp) {
     errors.push('بيانات الموظف غير متوفرة');
-    return { isValid: false, errors, expectedDays: 0, actualDays: 0 };
+    return { isValid: false, errors, warnings: [], expectedDays: 0, actualDays: 0 };
   }
 
   const isDailyWorker = emp.employmentType === 'DAILY_WORKER';
@@ -817,12 +835,6 @@ export async function validatePayrollCompleteness(payrollId: string): Promise<{
   const effectiveStart = emp.startDate > periodStart ? emp.startDate : periodStart;
   const effectiveEnd = emp.endDate && emp.endDate < periodEnd ? emp.endDate : periodEnd;
 
-  const startMs = new Date(effectiveStart).getTime();
-  const endMs = new Date(effectiveEnd).getTime();
-  const expectedDays = isDailyWorker
-    ? payrollRecord.workedDays
-    : Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1;
-
   // 3. Fetch all attendance records inside service window
   const attendances = await db.select().from(schema.attendance).where(
     and(
@@ -832,15 +844,39 @@ export async function validatePayrollCompleteness(payrollId: string): Promise<{
     )
   );
 
-  const actualDays = attendances.length;
+  const recordedDates = new Set(attendances.map((a: any) => a.workDate));
+  let expectedWorkingDays = 0;
+  const missingDates: string[] = [];
 
-  if (!isDailyWorker && actualDays < expectedDays) {
-    errors.push(`توجد أيام حضور ناقصة: المطلوب ${expectedDays} يوماً، والمسجل ${actualDays} يوماً فقط.`);
+  if (!isDailyWorker) {
+    const startD = new Date(effectiveStart + 'T00:00:00Z');
+    const endD = new Date(effectiveEnd + 'T00:00:00Z');
+    for (let d = new Date(startD); d <= endD; d.setUTCDate(d.getUTCDate() + 1)) {
+      // Friday is weekly rest day - attendance not required unless worked OT
+      const isFriday = d.getUTCDay() === 5;
+      if (!isFriday) {
+        expectedWorkingDays++;
+        const yyyy = d.getUTCFullYear();
+        const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const dd = String(d.getUTCDate()).padStart(2, '0');
+        const dateStr = `${yyyy}-${mm}-${dd}`;
+        if (!recordedDates.has(dateStr)) {
+          missingDates.push(dateStr);
+        }
+      }
+    }
+
+    if (missingDates.length > 0) {
+      errors.push(`توجد أيام عمل غير مسجلة في كشف الحضور والغياب (${missingDates.length} يوماً: ${missingDates.slice(0, 3).join(', ')}${missingDates.length > 3 ? '...' : ''}).`);
+    }
   }
+
+  const expectedDays = isDailyWorker ? payrollRecord.workedDays : expectedWorkingDays;
+  const actualDays = attendances.length;
 
   const draftAttendances = attendances.filter((a: any) => a.status === 'DRAFT');
   if (draftAttendances.length > 0) {
-    errors.push(`يوجد ${draftAttendances.length} سجل حضور في حالة مسودة (غير معتمد) خلال هذه الفترة.`);
+    warnings.push(`يوجد ${draftAttendances.length} سجل حضور بحالة مسودة (سيتم اعتماده تلقائياً عند اعتماد هذا الكشف).`);
   }
 
   const workDates = attendances.map((a: any) => a.workDate);
@@ -876,6 +912,7 @@ export async function validatePayrollCompleteness(payrollId: string): Promise<{
   return {
     isValid: errors.length === 0,
     errors,
+    warnings,
     expectedDays,
     actualDays,
   };
@@ -899,6 +936,22 @@ export async function approvePayroll(actor: UserSession, payrollId: string) {
   }
 
   const [emp] = await db.select().from(schema.employees).where(eq(schema.employees.id, payrollRecord.employeeId));
+
+  // Auto-approve all DRAFT attendances for this employee in the period upon approval
+  await db.update(schema.attendance)
+    .set({
+      status: 'APPROVED',
+      updatedBy: actor.id,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(schema.attendance.employeeId, payrollRecord.employeeId),
+        gte(schema.attendance.workDate, payrollRecord.periodStart),
+        lte(schema.attendance.workDate, payrollRecord.periodEnd),
+        eq(schema.attendance.status, 'DRAFT')
+      )
+    );
 
   const calc = computeNetPayroll({
     employmentType: emp?.employmentType || 'PERMANENT',

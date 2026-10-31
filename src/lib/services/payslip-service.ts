@@ -1,7 +1,7 @@
 import { getDb, schema } from '../../db';
 import { eq, and } from 'drizzle-orm';
 import { UserSession, assertCanViewFinancials } from '../auth/rbac';
-import { computeNetPayroll } from './payroll-service';
+import { computeNetPayroll, isLegacyOtRate } from './payroll-service';
 import { getSystemSettings } from './settings-service';
 
 export interface PayslipData {
@@ -234,8 +234,9 @@ export async function getBatchPayslipData(
     const calculatedOtRate = isDailyWorker
       ? (dailyRate > 0 ? (dailyRate / 4) : 0)
       : (basicEarned > 0 ? (basicEarned / 120) : 0);
-    const otRate = parseFloat(record.otRate || '0') > 0 && parseFloat(record.otRate || '0') !== 2.5
-      ? parseFloat(record.otRate || '0')
+    const rawOtRate = parseFloat(record.otRate || '0');
+    const otRate = rawOtRate > 0 && !isLegacyOtRate(rawOtRate)
+      ? rawOtRate
       : Math.round(calculatedOtRate * 1000) / 1000;
     const otTotal = Math.round(otHours * otRate * 1000) / 1000;
     const otherAdditions = parseFloat(record.otherAdditions || '0');

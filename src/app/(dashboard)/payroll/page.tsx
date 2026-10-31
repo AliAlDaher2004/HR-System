@@ -1,7 +1,7 @@
 import React from 'react';
 import { getCurrentUser } from '@/lib/auth/session';
 import { redirect } from 'next/navigation';
-import { getPayrolls, createPayrollDraft, generateBulkPayrollDrafts, updatePayrollDraft, deletePayrollRun, approveBulkPayrollForMonth } from '@/lib/services/payroll-service';
+import { getPayrolls, createPayrollDraft, generateBulkPayrollDrafts, updatePayrollDraft, deletePayrollRun, approveBulkPayrollForMonth, isLegacyOtRate } from '@/lib/services/payroll-service';
 import { getEmployees } from '@/lib/services/employee-service';
 import { Badge } from '@/components/ui';
 import Link from 'next/link';
@@ -288,7 +288,7 @@ export default async function PayrollPage({
               <option value="">جميع الموظفين</option>
               {employees.map((e) => (
                 <option key={e.id} value={e.id}>
-                  {e.name} ({e.employmentType === 'DAILY_WORKER' ? 'مياومة' : 'مثبت'})
+                  {e.name} ({e.employmentType === 'DAILY_WORKER' ? 'مياومة' : e.employmentType === 'PROBATIONARY' ? 'تجريبي' : 'مثبت'})
                 </option>
               ))}
             </select>
@@ -388,6 +388,7 @@ export default async function PayrollPage({
             ) : (
               payrolls.map((p: any) => {
                 const isDailyWorker = p.employmentType === 'DAILY_WORKER';
+                const isProbationary = p.employmentType === 'PROBATIONARY';
                 const basicEarnedVal = isDailyWorker
                   ? Number(p.dailyRate || 0) * Number(p.workedDays || 0)
                   : Number(p.basicEarned || 0);
@@ -396,8 +397,11 @@ export default async function PayrollPage({
                 const transportVal = isDailyWorker ? 0 : Math.max(0, 30 - unpaidDaysVal);
                 const gratuitiesVal = Number(p.gratuities || 0);
                 const otHoursVal = Number(p.otHours || 0);
-                const calculatedOtRate = basicEarnedVal > 0 ? ((basicEarnedVal / 26) / 9) * 2 : 0;
-                const otRateVal = Number(p.otRate || 0) > 0 && Number(p.otRate || 0) !== 2.5 ? Number(p.otRate) : calculatedOtRate;
+                const calculatedOtRate = isDailyWorker
+                  ? (Number(p.dailyRate || 0) > 0 ? (Number(p.dailyRate || 0) / 4) : 0)
+                  : (basicEarnedVal > 0 ? (basicEarnedVal / 120) : 0);
+                const rawOtRate = Number(p.otRate || 0);
+                const otRateVal = rawOtRate > 0 && !isLegacyOtRate(rawOtRate) ? rawOtRate : calculatedOtRate;
                 const otTotalVal = p.otTotal !== undefined && Number(p.otTotal) > 0 ? Number(p.otTotal) : Math.round(otHoursVal * otRateVal * 100) / 100;
                 const grossPayVal = basicEarnedVal + transportVal + gratuitiesVal + otTotalVal;
 
@@ -431,10 +435,12 @@ export default async function PayrollPage({
                         className={`px-0.5 py-0 text-[8px] font-bold ${
                           isDailyWorker
                             ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                            : isProbationary
+                            ? 'bg-purple-100 text-purple-900 border border-purple-300'
                             : 'bg-blue-50 text-blue-900 border border-blue-200'
                         }`}
                       >
-                        {isDailyWorker ? 'مياومة' : 'مثبت'}
+                        {isDailyWorker ? 'مياومة' : isProbationary ? 'تجريبي' : 'مثبت'}
                       </span>
                     </td>
                     <td className="py-1 px-0.5 text-slate-700 truncate">{p.department}</td>
