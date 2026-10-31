@@ -56,6 +56,7 @@ export async function getPayslipData(actor: UserSession, payrollId: string): Pro
     currency: schema.payroll.currency,
     basicEarned: schema.payroll.basicEarned,
     allowancesEarned: schema.payroll.allowancesEarned,
+    deliveryAllowance: schema.payroll.deliveryAllowance,
     gratuities: schema.payroll.gratuities,
     workedDays: schema.payroll.workedDays,
     otHours: schema.payroll.otHours,
@@ -94,6 +95,7 @@ export async function getPayslipData(actor: UserSession, payrollId: string): Pro
     employmentType: employee?.employmentType || 'PERMANENT',
     basicEarned: parseFloat(record.basicEarned),
     allowancesEarned: parseFloat(record.allowancesEarned),
+    deliveryAllowance: parseFloat(record.deliveryAllowance || '0'),
     gratuities: parseFloat(record.gratuities || '0'),
     otHours: parseFloat(record.otHours),
     otRate: parseFloat(record.otRate),
@@ -111,7 +113,7 @@ export async function getPayslipData(actor: UserSession, payrollId: string): Pro
   const ssRateNum = isSocialSecurity ? 7.5 : 0;
   const socialSecurityDeductionVal = isSocialSecurity ? Math.round(calc.basicEarned * 0.075 * 100) / 100 : 0;
 
-  const totalEarnings = calc.basicEarned + calc.allowancesEarned + calc.gratuities + calc.otTotal + calc.otherAdditions;
+  const totalEarnings = calc.basicEarned + calc.allowancesEarned + calc.deliveryAllowance + calc.gratuities + calc.otTotal + calc.otherAdditions;
   const totalDeductions = calc.unpaidDeduction + calc.lateDeduction + calc.earlyDepartureDeduction + calc.otherDeductions + calc.loanDeduction + socialSecurityDeductionVal;
 
   return {
@@ -130,7 +132,7 @@ export async function getPayslipData(actor: UserSession, payrollId: string): Pro
     nationalId: '0',
     basicEarned: calc.basicEarned.toFixed(3),
     allowancesEarned: calc.allowancesEarned.toFixed(3),
-    deliveryAllowance: '0.000',
+    deliveryAllowance: calc.deliveryAllowance.toFixed(3),
     tipsGratuities: calc.gratuities.toFixed(3),
     otHours: calc.otHours.toFixed(2),
     otRate: calc.otRate.toFixed(3),
@@ -191,6 +193,7 @@ export async function getBatchPayslipData(
       currency: schema.payroll.currency,
       basicEarned: schema.payroll.basicEarned,
       allowancesEarned: schema.payroll.allowancesEarned,
+      deliveryAllowance: schema.payroll.deliveryAllowance,
       gratuities: schema.payroll.gratuities,
       workedDays: schema.payroll.workedDays,
       dailyRate: schema.payroll.dailyRate,
@@ -228,6 +231,7 @@ export async function getBatchPayslipData(
     const dailyRate = parseFloat(record.dailyRate || '0');
     const basicEarned = isDailyWorker ? Math.round(workedDays * dailyRate * 1000) / 1000 : parseFloat(record.basicEarned || '0');
     const allowancesEarned = parseFloat(record.allowancesEarned || '0');
+    const deliveryAllowance = parseFloat(record.deliveryAllowance || '0');
     const gratuities = parseFloat(record.gratuities || '0');
     const otHours = parseFloat(record.otHours || '0');
     // Dynamic OT rate: 1 OT hour = 2 normal hours based on basic salary (30 * 8 = 240 hrs) -> basic / 120
@@ -252,7 +256,7 @@ export async function getBatchPayslipData(
     const ssRateNum = isSocialSecurity ? 7.5 : 0;
     const socialSecurityDeductionVal = isSocialSecurity ? Math.round(basicEarned * 0.075 * 1000) / 1000 : 0;
 
-    const totalEarnings = basicEarned + allowancesEarned + gratuities + otTotal + otherAdditions;
+    const totalEarnings = basicEarned + allowancesEarned + deliveryAllowance + gratuities + otTotal + otherAdditions;
     const totalDeductions = unpaidDeduction + lateDeduction + earlyDepartureDeduction + otherDeductions + loanDeduction + socialSecurityDeductionVal;
 
     const netPayVal = record.netPay
@@ -277,7 +281,7 @@ export async function getBatchPayslipData(
       nationalId: '0',
       basicEarned: basicEarned.toFixed(3),
       allowancesEarned: allowancesEarned.toFixed(3),
-      deliveryAllowance: '0.000',
+      deliveryAllowance: deliveryAllowance.toFixed(3),
       tipsGratuities: gratuities.toFixed(3),
       otHours: otHours.toFixed(2),
       otRate: otRate.toFixed(3),

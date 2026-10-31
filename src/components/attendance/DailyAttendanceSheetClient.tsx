@@ -30,6 +30,10 @@ interface EmployeeAttendanceRow {
     earlyDepartureMinutes: number;
     departureReason: string | null;
     approvedOtHours?: string | number | null;
+    penaltyAmount?: string | number | null;
+    penaltyReason?: string | null;
+    deliveryAllowance?: string | number | null;
+    deliveryReason?: string | null;
     status: string;
   } | null;
   scheduledIn: string;
@@ -58,6 +62,8 @@ interface DailyAttendanceSheetClientProps {
   ) => Promise<void>;
   recordEarlyDepartureAction: (attendanceId: string, clockOutTime: string, reason: string) => Promise<void>;
   updateOvertimeAction?: (employeeId: string, date: string, otHours: number) => Promise<void>;
+  recordPenaltyAction?: (employeeId: string, date: string, amount: number, reason: string) => Promise<void>;
+  recordDeliveryAllowanceAction?: (employeeId: string, date: string, amount: number, reason: string) => Promise<void>;
   bulkMarkPresentAction?: (date: string, onlyUnmarked: boolean) => Promise<{ markedCount: number; skippedCount: number; total: number }>;
   approveAllDailyAction?: (date: string) => Promise<{ approvedCount: number }>;
   canApprove?: boolean;
@@ -71,6 +77,8 @@ export function DailyAttendanceSheetClient({
   markAbsentAction,
   recordEarlyDepartureAction,
   updateOvertimeAction,
+  recordPenaltyAction,
+  recordDeliveryAllowanceAction,
   bulkMarkPresentAction,
   approveAllDailyAction,
   canApprove = false,
@@ -147,6 +155,34 @@ export function DailyAttendanceSheetClient({
     scheduledOut: '',
     departureTime: '15:00',
     reason: 'شخصي',
+  });
+
+  const [penaltyModal, setPenaltyModal] = useState<{
+    open: boolean;
+    employeeId: string;
+    employeeName: string;
+    amount: number;
+    reason: string;
+  }>({
+    open: false,
+    employeeId: '',
+    employeeName: '',
+    amount: 5,
+    reason: 'مخالفة تعليمات العمل / إتلاف أو تقصير',
+  });
+
+  const [deliveryModal, setDeliveryModal] = useState<{
+    open: boolean;
+    employeeId: string;
+    employeeName: string;
+    amount: number;
+    reason: string;
+  }>({
+    open: false,
+    employeeId: '',
+    employeeName: '',
+    amount: 5,
+    reason: 'إحضار ديزل للرافعة الشوكية',
   });
 
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -394,6 +430,110 @@ export function DailyAttendanceSheetClient({
     }
   }
 
+  async function onConfirmPenalty() {
+    if (!recordPenaltyAction) return;
+    setFeedback(null);
+    const empId = penaltyModal.employeeId;
+    const prev = displayRows;
+
+    setDisplayRows((current) =>
+      current.map((r) =>
+        r.employee.id === empId
+          ? {
+              ...r,
+              attendance: r.attendance
+                ? {
+                    ...r.attendance,
+                    penaltyAmount: penaltyModal.amount,
+                    penaltyReason: penaltyModal.reason,
+                  }
+                : null,
+            }
+          : r
+      )
+    );
+    setPenaltyModal((m) => ({ ...m, open: false }));
+
+    setIsModalPending(true);
+    setPendingEmpIds((prevSet) => new Set(prevSet).add(empId));
+    try {
+      await recordPenaltyAction(
+        empId,
+        selectedDate,
+        Number(penaltyModal.amount) || 0,
+        penaltyModal.reason
+      );
+      setFeedback({
+        type: 'success',
+        message: penaltyModal.amount > 0
+          ? `✓ تم بنجاح تسجيل عقوبة مخالفة بمبلغ ${penaltyModal.amount} د.أ على الموظف`
+          : '✓ تم إلغاء/تصفير عقوبة المخالفة للموظف',
+      });
+    } catch (err: any) {
+      setDisplayRows(prev);
+      setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء تسجيل المخالفة' });
+    } finally {
+      setIsModalPending(false);
+      setPendingEmpIds((prevSet) => {
+        const nextSet = new Set(prevSet);
+        nextSet.delete(empId);
+        return nextSet;
+      });
+    }
+  }
+
+  async function onConfirmDeliveryAllowance() {
+    if (!recordDeliveryAllowanceAction) return;
+    setFeedback(null);
+    const empId = deliveryModal.employeeId;
+    const prev = displayRows;
+
+    setDisplayRows((current) =>
+      current.map((r) =>
+        r.employee.id === empId
+          ? {
+              ...r,
+              attendance: r.attendance
+                ? {
+                    ...r.attendance,
+                    deliveryAllowance: deliveryModal.amount,
+                    deliveryReason: deliveryModal.reason,
+                  }
+                : null,
+            }
+          : r
+      )
+    );
+    setDeliveryModal((m) => ({ ...m, open: false }));
+
+    setIsModalPending(true);
+    setPendingEmpIds((prevSet) => new Set(prevSet).add(empId));
+    try {
+      await recordDeliveryAllowanceAction(
+        empId,
+        selectedDate,
+        Number(deliveryModal.amount) || 0,
+        deliveryModal.reason
+      );
+      setFeedback({
+        type: 'success',
+        message: deliveryModal.amount > 0
+          ? `✓ تم بنجاح تسجيل بدل توصيل بمبلغ ${deliveryModal.amount} د.أ للموظف (${deliveryModal.reason})`
+          : '✓ تم إلغاء/تصفير بدل التوصيل للموظف',
+      });
+    } catch (err: any) {
+      setDisplayRows(prev);
+      setFeedback({ type: 'error', message: err.message || 'حدث خطأ أثناء تسجيل بدل التوصيل' });
+    } finally {
+      setIsModalPending(false);
+      setPendingEmpIds((prevSet) => {
+        const nextSet = new Set(prevSet);
+        nextSet.delete(empId);
+        return nextSet;
+      });
+    }
+  }
+
   async function onSaveAndTransferDailySheet() {
     setFeedback(null);
     setIsSavingAll(true);
@@ -493,6 +633,10 @@ export function DailyAttendanceSheetClient({
   const unexcusedCount = filteredRows.filter((r) => r.attendanceType === 'UNEXCUSED_ABSENCE' || r.attendanceType === 'ABSENT').length;
   const earlyDepartureCount = filteredRows.filter((r) => r.earlyDeparture).length;
   const unmarkedCount = filteredRows.filter((r) => !r.isMarked).length;
+  const penaltyCount = filteredRows.filter((r) => r.attendance && Number(r.attendance.penaltyAmount) > 0).length;
+  const penaltyTotal = filteredRows.reduce((acc, r) => acc + (Number(r.attendance?.penaltyAmount) || 0), 0);
+  const deliveryCount = filteredRows.filter((r) => r.attendance && Number(r.attendance.deliveryAllowance) > 0).length;
+  const deliveryTotal = filteredRows.reduce((acc, r) => acc + (Number(r.attendance?.deliveryAllowance) || 0), 0);
 
   return (
     <div className="space-y-3">
@@ -727,7 +871,7 @@ export function DailyAttendanceSheetClient({
       </div>
 
       {/* KPI Stats Bar (Classic sunken tiles) */}
-      <div className="grid grid-cols-2 sm:grid-cols-7 gap-1 text-xs select-none">
+      <div className="grid grid-cols-2 sm:grid-cols-9 gap-1 text-xs select-none">
         <div className="win-sunken bg-white p-1 text-center">
           <div className="text-[10px] text-[#404040]">الإجمالي</div>
           <div className="text-sm font-bold text-black">{totalCount}</div>
@@ -756,6 +900,18 @@ export function DailyAttendanceSheetClient({
           <div className="text-[10px] text-slate-600">{isFriday ? 'عطلة أسبوعية' : 'غير مسجل'}</div>
           <div className="text-sm font-bold text-slate-600">{unmarkedCount}</div>
         </div>
+        <div className="win-sunken bg-white p-1 text-center border-r-2 border-rose-500">
+          <div className="text-[10px] text-rose-800 font-bold">🚨 مخالفات اليوم</div>
+          <div className="text-sm font-bold text-rose-700 font-mono">
+            {penaltyCount > 0 ? `${penaltyCount} (-${penaltyTotal.toFixed(1)})` : '0'}
+          </div>
+        </div>
+        <div className="win-sunken bg-white p-1 text-center border-r-2 border-amber-500">
+          <div className="text-[10px] text-amber-900 font-bold">⛽ توصيل اليوم</div>
+          <div className="text-sm font-bold text-amber-800 font-mono">
+            {deliveryCount > 0 ? `${deliveryCount} (+${deliveryTotal.toFixed(1)})` : '0'}
+          </div>
+        </div>
       </div>
 
       {/* High-density Attendance Table */}
@@ -770,7 +926,7 @@ export function DailyAttendanceSheetClient({
               <th className="w-36">الوردية والدوام المجدول</th>
               <th className="w-40">حالة الحضور والغياب</th>
               <th className="w-24 font-bold">ساعات العمل</th>
-              <th className="text-center whitespace-nowrap min-w-[340px]">تسجيل الحضور والغياب السريع</th>
+              <th className="text-center whitespace-nowrap min-w-[420px]">تسجيل الحضور والإضافي والمتغيرات</th>
               <th className="w-24 text-center whitespace-nowrap">المغادرة</th>
             </tr>
           </thead>
@@ -872,6 +1028,54 @@ export function DailyAttendanceSheetClient({
                         </span>
                       ) : (
                         <span className="text-purple-700 font-medium">{row.attendanceType}</span>
+                      )}
+
+                      {/* Display penalty badge if recorded on this day */}
+                      {att && Number(att.penaltyAmount) > 0 && (
+                        <div className="mt-1">
+                          <button
+                            type="button"
+                            disabled={isLocked}
+                            onClick={() => {
+                              setPenaltyModal({
+                                open: true,
+                                employeeId: emp.id,
+                                employeeName: emp.name,
+                                amount: Number(att.penaltyAmount),
+                                reason: att.penaltyReason || '',
+                              });
+                            }}
+                            className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-900 bg-rose-50 border border-rose-300 px-1.5 py-0.5 rounded hover:bg-rose-100 cursor-pointer text-right"
+                            title={`مخالفة: ${att.penaltyReason || ''} (انقر للتعديل)`}
+                          >
+                            <span>🚨</span>
+                            <span>مخالفة: -{Number(att.penaltyAmount).toFixed(1)} د.أ</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Display delivery allowance badge if recorded on this day */}
+                      {att && Number(att.deliveryAllowance) > 0 && (
+                        <div className="mt-1">
+                          <button
+                            type="button"
+                            disabled={isLocked}
+                            onClick={() => {
+                              setDeliveryModal({
+                                open: true,
+                                employeeId: emp.id,
+                                employeeName: emp.name,
+                                amount: Number(att.deliveryAllowance),
+                                reason: att.deliveryReason || '',
+                              });
+                            }}
+                            className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-950 bg-amber-50 border border-amber-300 px-1.5 py-0.5 rounded hover:bg-amber-100 cursor-pointer text-right"
+                            title={`بدل توصيل: ${att.deliveryReason || ''} (انقر للتعديل)`}
+                          >
+                            <span>⛽</span>
+                            <span>توصيل: +{Number(att.deliveryAllowance).toFixed(1)} د.أ</span>
+                          </button>
+                        </div>
                       )}
                     </td>
                     <td className="font-mono text-[11px]">
@@ -989,6 +1193,52 @@ export function DailyAttendanceSheetClient({
                             title="تسجيل أو تعديل ساعات العمل الإضافي المعتمدة للموظف"
                           >
                             {att && Number(att.approvedOtHours) > 0 ? `⚡ إضافي (${att.approvedOtHours}س)` : '⚡ +إضافي'}
+                          </button>
+
+                          {/* Red Alert: عقوبة مخالفة */}
+                          <button
+                            type="button"
+                            disabled={isEmpPending}
+                            onClick={() => {
+                              setPenaltyModal({
+                                open: true,
+                                employeeId: emp.id,
+                                employeeName: emp.name,
+                                amount: Number(att?.penaltyAmount) || 5,
+                                reason: att?.penaltyReason || 'مخالفة تعليمات العمل / إتلاف أو تقصير',
+                              });
+                            }}
+                            className={`win-btn text-[10px] px-1.5 py-0.5 font-bold whitespace-nowrap ${
+                              att && Number(att.penaltyAmount) > 0
+                                ? 'bg-rose-200 text-rose-950 ring-1 ring-rose-600'
+                                : 'text-rose-900'
+                            }`}
+                            title="تسجيل عقوبة مالية أو خصم مخالفة على الموظف في هذا اليوم"
+                          >
+                            {att && Number(att.penaltyAmount) > 0 ? `🚨 مخالفة (${Number(att.penaltyAmount).toFixed(1)}د)` : '🚨 مخالفة'}
+                          </button>
+
+                          {/* Amber: بدل توصيل ديزل ومصنع */}
+                          <button
+                            type="button"
+                            disabled={isEmpPending}
+                            onClick={() => {
+                              setDeliveryModal({
+                                open: true,
+                                employeeId: emp.id,
+                                employeeName: emp.name,
+                                amount: Number(att?.deliveryAllowance) || 5,
+                                reason: att?.deliveryReason || 'إحضار ديزل للرافعة الشوكية',
+                              });
+                            }}
+                            className={`win-btn text-[10px] px-1.5 py-0.5 font-bold whitespace-nowrap ${
+                              att && Number(att.deliveryAllowance) > 0
+                                ? 'bg-amber-200 text-amber-950 ring-1 ring-amber-600'
+                                : 'text-amber-900'
+                            }`}
+                            title="تسجيل بدل توصيل نقدي للعامل بسيارته الخاصة (مثل إحضار ديزل للمصنع)"
+                          >
+                            {att && Number(att.deliveryAllowance) > 0 ? `⛽ توصيل (+${Number(att.deliveryAllowance).toFixed(1)}د)` : '⛽ توصيل'}
                           </button>
                         </div>
                       )}
@@ -1274,6 +1524,199 @@ export function DailyAttendanceSheetClient({
             >
               إلغاء
             </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Disciplinary Penalty Modal Dialog */}
+      <Modal
+        isOpen={penaltyModal.open}
+        onClose={() => setPenaltyModal((prev) => ({ ...prev, open: false }))}
+        title={`🚨 تسجيل عقوبة مالية / خصم مخالفة: ${penaltyModal.employeeName}`}
+      >
+        <div className="space-y-3 text-xs">
+          <div className="bg-[#FFF0F0] border border-[#DC2626] p-2 text-rose-950">
+            <div className="font-bold flex items-center gap-1.5 text-rose-900">
+              <span>⚠️</span>
+              <span>عقوبة مالية مباشرة ليوم ({selectedDate})</span>
+            </div>
+            <div className="text-[11px] text-rose-800 mt-0.5 leading-relaxed">
+              يتم خصم هذا المبلغ مباشرة كعقوبة مخالفة مالية على الموظف في هذا اليوم وترحيله تلقائياً لكشف ومسيرات الرواتب الشهرية.
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-black mb-1">قيمة الخصم العقابي (دينار أردني)</label>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              max="500"
+              value={penaltyModal.amount}
+              onChange={(e) =>
+                setPenaltyModal((prev) => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))
+              }
+              className="win-input w-full py-1.5 px-2 font-mono text-sm font-bold text-rose-700"
+              placeholder="0.000"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-black mb-1">سبب وتفاصيل المخالفة</label>
+            <div className="flex flex-wrap gap-1 mb-1.5">
+              {[
+                'إتلاف بضاعة أو كراتين',
+                'مخالفة تعليمات العمل والسلامة',
+                'إهمال وتقصير في المهام',
+                'شجار أو سوء سلوك',
+                'تلف أدوات أو معدات المصنع',
+              ].map((reasonPreset) => (
+                <button
+                  key={reasonPreset}
+                  type="button"
+                  onClick={() => setPenaltyModal((prev) => ({ ...prev, reason: reasonPreset }))}
+                  className="win-btn text-[10px] px-1.5 py-0.5 bg-rose-50 text-rose-900"
+                >
+                  + {reasonPreset}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              value={penaltyModal.reason}
+              onChange={(e) =>
+                setPenaltyModal((prev) => ({ ...prev, reason: e.target.value }))
+              }
+              className="win-input w-full py-1.5 px-2 text-xs"
+              placeholder="اكتب سبب أو تفاصيل المخالفة هنا..."
+            />
+          </div>
+
+          <div className="flex justify-between items-center gap-2 pt-2 border-t border-[#808080]">
+            {penaltyModal.amount > 0 && (
+              <button
+                type="button"
+                disabled={isModalPending}
+                onClick={() => setPenaltyModal((prev) => ({ ...prev, amount: 0 }))}
+                className="win-btn px-2 py-1 text-[11px] text-slate-700"
+                title="تصفير المبلغ لإلغاء المخالفة"
+              >
+                تصفير المبلغ (0)
+              </button>
+            )}
+            <div className="flex items-center gap-2 mr-auto">
+              <button
+                type="button"
+                disabled={isModalPending}
+                onClick={onConfirmPenalty}
+                className="win-btn px-4 py-1 font-bold text-rose-950 bg-rose-100 ring-1 ring-rose-500"
+              >
+                {isModalPending ? 'جاري الحفظ...' : penaltyModal.amount > 0 ? 'اعتماد وحفظ الخصم' : 'إلغاء وتصفير الخصم'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPenaltyModal((prev) => ({ ...prev, open: false }))}
+                className="win-btn px-3 py-1 text-slate-700"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delivery Allowance Modal Dialog */}
+      <Modal
+        isOpen={deliveryModal.open}
+        onClose={() => setDeliveryModal((prev) => ({ ...prev, open: false }))}
+        title={`⛽ تسجيل بدل توصيل نقدي: ${deliveryModal.employeeName}`}
+      >
+        <div className="space-y-3 text-xs">
+          <div className="bg-[#FFFDF0] border border-[#CA8A04] p-2 text-amber-950">
+            <div className="font-bold flex items-center gap-1.5 text-amber-900">
+              <span>⛽</span>
+              <span>بدل توصيل بالسيارة الخاصة ليوم ({selectedDate})</span>
+            </div>
+            <div className="text-[11px] text-amber-900 mt-0.5 leading-relaxed">
+              يُصرف هذا البدل للعامل عند استخدامه سيارته الخاصة لخدمة المصنع (مثل إحضار ديزل للرافعة الشوكية أو شراء مستلزمات)، ويضاف مباشرة لصافي راتبه الشهري.
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-black mb-1">قيمة بدل التوصيل (دينار أردني)</label>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              max="500"
+              value={deliveryModal.amount}
+              onChange={(e) =>
+                setDeliveryModal((prev) => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))
+              }
+              className="win-input w-full py-1.5 px-2 font-mono text-sm font-bold text-amber-800"
+              placeholder="0.000"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-black mb-1">بيان مهمة التوصيل والمشوار</label>
+            <div className="flex flex-wrap gap-1 mb-1.5">
+              {[
+                'إحضار ديزل للرافعة الشوكية',
+                'نقل بضائع أو طلبيات مستعجلة',
+                'شراء قطع غيار ومستلزمات المصنع',
+                'مشوار عمل خارجي بالسيارة الخاصة',
+              ].map((reasonPreset) => (
+                <button
+                  key={reasonPreset}
+                  type="button"
+                  onClick={() => setDeliveryModal((prev) => ({ ...prev, reason: reasonPreset }))}
+                  className="win-btn text-[10px] px-1.5 py-0.5 bg-amber-50 text-amber-950"
+                >
+                  + {reasonPreset}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              value={deliveryModal.reason}
+              onChange={(e) =>
+                setDeliveryModal((prev) => ({ ...prev, reason: e.target.value }))
+              }
+              className="win-input w-full py-1.5 px-2 text-xs"
+              placeholder="اكتب بيان المشوار هنا..."
+            />
+          </div>
+
+          <div className="flex justify-between items-center gap-2 pt-2 border-t border-[#808080]">
+            {deliveryModal.amount > 0 && (
+              <button
+                type="button"
+                disabled={isModalPending}
+                onClick={() => setDeliveryModal((prev) => ({ ...prev, amount: 0 }))}
+                className="win-btn px-2 py-1 text-[11px] text-slate-700"
+                title="تصفير المبلغ لإلغاء البدل"
+              >
+                تصفير المبلغ (0)
+              </button>
+            )}
+            <div className="flex items-center gap-2 mr-auto">
+              <button
+                type="button"
+                disabled={isModalPending}
+                onClick={onConfirmDeliveryAllowance}
+                className="win-btn px-4 py-1 font-bold text-amber-950 bg-amber-100 ring-1 ring-amber-500"
+              >
+                {isModalPending ? 'جاري الحفظ...' : deliveryModal.amount > 0 ? 'اعتماد وحفظ البدل' : 'إلغاء وتصفير البدل'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeliveryModal((prev) => ({ ...prev, open: false }))}
+                className="win-btn px-3 py-1 text-slate-700"
+              >
+                إغلاق
+              </button>
+            </div>
           </div>
         </div>
       </Modal>

@@ -39,6 +39,13 @@ export function getDb() {
       const fs = require('fs');
       fs.mkdirSync(path.dirname(localDataDir), { recursive: true });
       globalForDb.pgliteInstance = new PGlite(localDataDir);
+      globalForDb.pgliteInstance.exec(`
+        ALTER TABLE attendance ADD COLUMN IF NOT EXISTS penalty_amount NUMERIC(12, 3) NOT NULL DEFAULT 0;
+        ALTER TABLE attendance ADD COLUMN IF NOT EXISTS penalty_reason TEXT;
+        ALTER TABLE attendance ADD COLUMN IF NOT EXISTS delivery_allowance NUMERIC(12, 3) NOT NULL DEFAULT 0;
+        ALTER TABLE attendance ADD COLUMN IF NOT EXISTS delivery_reason TEXT;
+        ALTER TABLE payroll ADD COLUMN IF NOT EXISTS delivery_allowance NUMERIC(12, 3) NOT NULL DEFAULT 0;
+      `).catch(() => {});
     }
     globalForDb.dbInstance = drizzlePglite(globalForDb.pgliteInstance, { schema });
     return globalForDb.dbInstance;

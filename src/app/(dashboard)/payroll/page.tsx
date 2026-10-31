@@ -70,6 +70,7 @@ export default async function PayrollPage({
 
     const unpaidDaysVal = Number(p.unpaidDays || 0);
     const transportVal = isDailyWorker ? 0 : (p.allowancesEarned !== undefined && p.allowancesEarned !== null ? Number(p.allowancesEarned) : Math.max(0, 30 - unpaidDaysVal));
+    const deliveryVal = Number(p.deliveryAllowance || 0);
     const gratuitiesVal = Number(p.gratuities || 0);
     const otHoursVal = Number(p.otHours || 0);
     const calculatedOtRate = isDailyWorker
@@ -78,7 +79,7 @@ export default async function PayrollPage({
     const rawOtRate = Number(p.otRate || 0);
     const otRateVal = rawOtRate > 0 && !isLegacyOtRate(rawOtRate) ? rawOtRate : calculatedOtRate;
     const otTotalVal = p.otTotal !== undefined && Number(p.otTotal) > 0 ? Number(p.otTotal) : Math.round(otHoursVal * otRateVal * 100) / 100;
-    const grossPayVal = basicEarnedVal + transportVal + gratuitiesVal + otTotalVal;
+    const grossPayVal = basicEarnedVal + transportVal + gratuitiesVal + deliveryVal + otTotalVal;
 
     const isSocialSecurity = Boolean(p.socialSecurityRegistered);
     const socialSecurityVal = isSocialSecurity ? Math.round(basicEarnedVal * 0.075 * 100) / 100 : 0;
@@ -116,7 +117,7 @@ export default async function PayrollPage({
     grandTotalNetPay += netVal;
 
     totalBasicAndAllowances += basicEarnedVal + transportVal;
-    totalOvertimeAndAdditions += otTotalVal + gratuitiesVal;
+    totalOvertimeAndAdditions += otTotalVal + gratuitiesVal + deliveryVal;
     totalLateDeductions += lateDeductionVal;
     totalEarlyDepartureDeductions += earlyDepartureDeductionVal;
   });
@@ -226,6 +227,15 @@ export default async function PayrollPage({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/payroll/adjustments${resolvedParams.month ? `?month=${resolvedParams.month}` : ''}`}
+            className="win-btn font-extrabold text-xs px-2.5 py-1 flex items-center gap-1 text-[#800000] bg-amber-50 border border-amber-400 hover:bg-amber-100 shadow-sm"
+            title="مراجعة متغيرات الدوام، إكراميات الموظفين، بدل مشاوير الديزل والمخالفات قبل ترحيل الرواتب"
+          >
+            <span>⚡</span>
+            <span>إعداد ومراجعة متغيرات الرواتب (مكافآت / عقوبات)</span>
+          </Link>
+
           <Link
             href={`/payroll/consolidated${resolvedParams.month ? `?month=${resolvedParams.month}` : ''}`}
             className="win-btn font-bold text-xs px-2.5 py-1 flex items-center gap-1 text-[#0A246A] bg-blue-50 border border-blue-300"
@@ -398,6 +408,7 @@ export default async function PayrollPage({
 
                 const unpaidDaysVal = Number(p.unpaidDays || 0);
                 const transportVal = isDailyWorker ? 0 : (p.allowancesEarned !== undefined && p.allowancesEarned !== null ? Number(p.allowancesEarned) : Math.max(0, 30 - unpaidDaysVal));
+                const deliveryVal = Number(p.deliveryAllowance || 0);
                 const gratuitiesVal = Number(p.gratuities || 0);
                 const otHoursVal = Number(p.otHours || 0);
                 const calculatedOtRate = isDailyWorker
@@ -406,7 +417,7 @@ export default async function PayrollPage({
                 const rawOtRate = Number(p.otRate || 0);
                 const otRateVal = rawOtRate > 0 && !isLegacyOtRate(rawOtRate) ? rawOtRate : calculatedOtRate;
                 const otTotalVal = p.otTotal !== undefined && Number(p.otTotal) > 0 ? Number(p.otTotal) : Math.round(otHoursVal * otRateVal * 100) / 100;
-                const grossPayVal = basicEarnedVal + transportVal + gratuitiesVal + otTotalVal;
+                const grossPayVal = basicEarnedVal + transportVal + gratuitiesVal + deliveryVal + otTotalVal;
 
                 const isSocialSecurity = Boolean(p.socialSecurityRegistered);
                 const socialSecurityVal = isSocialSecurity ? Math.round(basicEarnedVal * 0.075 * 100) / 100 : 0;
@@ -453,7 +464,14 @@ export default async function PayrollPage({
                         : basicEarnedVal.toFixed(2)}
                     </td>
                     <td className="py-1 px-0.5 font-mono truncate">{transportVal > 0 ? transportVal.toFixed(2) : '-'}</td>
-                    <td className="py-1 px-0.5 font-mono truncate">{gratuitiesVal > 0 ? gratuitiesVal.toFixed(2) : '-'}</td>
+                    <td className="py-1 px-0.5 font-mono truncate" title={deliveryVal > 0 ? `اكراميات: ${gratuitiesVal.toFixed(2)} | بدل توصيل: ${deliveryVal.toFixed(2)}` : undefined}>
+                      {gratuitiesVal > 0 || deliveryVal > 0 ? (
+                        <span>
+                          {(gratuitiesVal + deliveryVal).toFixed(2)}
+                          {deliveryVal > 0 && <span className="text-[7.5px] text-amber-800 font-sans mr-0.5">⛽</span>}
+                        </span>
+                      ) : '-'}
+                    </td>
                     <td className="py-1 px-0.5 font-mono truncate">{otHoursVal > 0 ? otHoursVal.toFixed(2) : '-'}</td>
                     <td className="py-1 px-0.5 font-mono text-emerald-800 truncate">+{otTotalVal.toFixed(2)}</td>
                     <td className="py-1 px-0.5 font-mono font-bold bg-blue-50 text-blue-900 truncate">{grossPayVal.toFixed(2)}</td>

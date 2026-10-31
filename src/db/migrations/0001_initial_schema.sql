@@ -246,6 +246,10 @@ ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS early_departure_minutes I
 ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS departure_reason TEXT;
 ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS departure_recorded_by UUID REFERENCES public.users(id);
 ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS departure_recorded_at TIMESTAMPTZ;
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS penalty_amount NUMERIC(12, 3) NOT NULL DEFAULT 0;
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS penalty_reason TEXT;
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS delivery_allowance NUMERIC(12, 3) NOT NULL DEFAULT 0;
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS delivery_reason TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_attendance_employee ON public.attendance(employee_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_work_date ON public.attendance(work_date);
@@ -318,6 +322,7 @@ ALTER TABLE public.payroll ADD COLUMN IF NOT EXISTS late_deduction NUMERIC(12, 3
 ALTER TABLE public.payroll ADD COLUMN IF NOT EXISTS early_departure_minutes INT NOT NULL DEFAULT 0;
 ALTER TABLE public.payroll ADD COLUMN IF NOT EXISTS early_departure_deduction NUMERIC(12, 3) NOT NULL DEFAULT 0;
 ALTER TABLE public.payroll ADD COLUMN IF NOT EXISTS daily_rate NUMERIC(12, 3) NOT NULL DEFAULT 0;
+ALTER TABLE public.payroll ADD COLUMN IF NOT EXISTS delivery_allowance NUMERIC(12, 3) NOT NULL DEFAULT 0;
 ALTER TABLE public.payroll ADD COLUMN IF NOT EXISTS gratuities NUMERIC(12, 3) NOT NULL DEFAULT 0;
 
 -- Partial unique index ensuring only one active (non-cancelled) payroll per employee per month

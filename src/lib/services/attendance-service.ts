@@ -172,6 +172,10 @@ export async function getAttendanceRecords(
     attendanceType: schema.attendance.attendanceType,
     unpaidDays: schema.attendance.unpaidDays,
     approvedOtHours: schema.attendance.approvedOtHours,
+    penaltyAmount: schema.attendance.penaltyAmount,
+    penaltyReason: schema.attendance.penaltyReason,
+    deliveryAllowance: schema.attendance.deliveryAllowance,
+    deliveryReason: schema.attendance.deliveryReason,
     status: schema.attendance.status,
     leaveId: schema.attendance.leaveId,
     notes: schema.attendance.notes,
@@ -246,6 +250,11 @@ export async function getDailyAttendanceSheet(actor: UserSession, workDate: stri
       workedMinutes: att?.workedMinutes ?? 0,
       earlyDeparture: att?.earlyDeparture ?? false,
       earlyDepartureMinutes: att?.earlyDepartureMinutes ?? 0,
+      approvedOtHours: att?.approvedOtHours ? parseFloat(att.approvedOtHours) : 0,
+      penaltyAmount: att?.penaltyAmount ? parseFloat(att.penaltyAmount) : 0,
+      penaltyReason: att?.penaltyReason || null,
+      deliveryAllowance: att?.deliveryAllowance ? parseFloat(att.deliveryAllowance) : 0,
+      deliveryReason: att?.deliveryReason || null,
     };
   });
 }
@@ -616,6 +625,142 @@ export async function updateOvertimeHours(
     recordId: result.id,
     action: 'ATTENDANCE_OVERTIME_UPDATED',
     metadata: { employeeId, workDate, otHours },
+  });
+
+  return result;
+}
+
+export async function recordDailyPenalty(
+  actor: UserSession,
+  employeeId: string,
+  workDate: string,
+  amount: number,
+  reason: string
+) {
+  const db = getDb();
+  const locked = await isAttendanceLocked(employeeId, workDate);
+  if (locked) {
+    throw new Error(`لا يمكن تسجيل أو تعديل المخالفة لتاريخ (${workDate}) لأن كشف راتب هذه الفترة معتمد أو مدفوع مسبقاً.`);
+  }
+
+  if (amount < 0) {
+    throw new Error('مبلغ المخالفة لا يمكن أن يكون سالباً.');
+  }
+
+  const [existing] = await db.select().from(schema.attendance).where(
+    and(
+      eq(schema.attendance.employeeId, employeeId),
+      eq(schema.attendance.workDate, workDate)
+    )
+  );
+
+  let result;
+  if (existing) {
+    const [updated] = await db.update(schema.attendance)
+      .set({
+        penaltyAmount: amount.toFixed(3),
+        penaltyReason: reason || null,
+        updatedBy: actor.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.attendance.id, existing.id))
+      .returning();
+    result = updated;
+  } else {
+    const [emp] = await db.select().from(schema.employees).where(eq(schema.employees.id, employeeId));
+    const settings = await getSystemSettings();
+    const schedStart = emp?.workStartTime || settings?.defaultWorkStartTime || '08:00:00';
+
+    const [inserted] = await db.insert(schema.attendance)
+      .values({
+        employeeId,
+        workDate,
+        scheduledIn: schedStart,
+        attendanceType: 'PRESENT',
+        penaltyAmount: amount.toFixed(3),
+        penaltyReason: reason || null,
+        status: 'DRAFT',
+        createdBy: actor.id,
+        updatedBy: actor.id,
+      })
+      .returning();
+    result = inserted;
+  }
+
+  await logAuditEvent({
+    actor,
+    tableName: 'attendance',
+    recordId: result.id,
+    action: 'ATTENDANCE_RECORD_PENALTY',
+    metadata: { employeeId, workDate, amount, reason },
+  });
+
+  return result;
+}
+
+export async function recordDeliveryAllowance(
+  actor: UserSession,
+  employeeId: string,
+  workDate: string,
+  amount: number,
+  reason: string
+) {
+  const db = getDb();
+  const locked = await isAttendanceLocked(employeeId, workDate);
+  if (locked) {
+    throw new Error(`لا يمكن تسجيل أو تعديل بدل التوصيل لتاريخ (${workDate}) لأن كشف راتب هذه الفترة معتمد أو مدفوع مسبقاً.`);
+  }
+
+  if (amount < 0) {
+    throw new Error('مبلغ بدل التوصيل لا يمكن أن يكون سالباً.');
+  }
+
+  const [existing] = await db.select().from(schema.attendance).where(
+    and(
+      eq(schema.attendance.employeeId, employeeId),
+      eq(schema.attendance.workDate, workDate)
+    )
+  );
+
+  let result;
+  if (existing) {
+    const [updated] = await db.update(schema.attendance)
+      .set({
+        deliveryAllowance: amount.toFixed(3),
+        deliveryReason: reason || null,
+        updatedBy: actor.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.attendance.id, existing.id))
+      .returning();
+    result = updated;
+  } else {
+    const [emp] = await db.select().from(schema.employees).where(eq(schema.employees.id, employeeId));
+    const settings = await getSystemSettings();
+    const schedStart = emp?.workStartTime || settings?.defaultWorkStartTime || '08:00:00';
+
+    const [inserted] = await db.insert(schema.attendance)
+      .values({
+        employeeId,
+        workDate,
+        scheduledIn: schedStart,
+        attendanceType: 'PRESENT',
+        deliveryAllowance: amount.toFixed(3),
+        deliveryReason: reason || null,
+        status: 'DRAFT',
+        createdBy: actor.id,
+        updatedBy: actor.id,
+      })
+      .returning();
+    result = inserted;
+  }
+
+  await logAuditEvent({
+    actor,
+    tableName: 'attendance',
+    recordId: result.id,
+    action: 'ATTENDANCE_RECORD_DELIVERY_ALLOWANCE',
+    metadata: { employeeId, workDate, amount, reason },
   });
 
   return result;

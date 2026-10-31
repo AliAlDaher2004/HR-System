@@ -7,6 +7,8 @@ import {
   markAbsent,
   recordEarlyDeparture,
   updateOvertimeHours,
+  recordDailyPenalty,
+  recordDeliveryAllowance,
   getLockedEmployeeIds,
   bulkMarkPresentForDate,
   approveAllDailyAttendance,
@@ -95,6 +97,22 @@ export default async function AttendancePage({
     return result;
   }
 
+  async function handleRecordPenalty(employeeId: string, date: string, amount: number, reason: string) {
+    'use server';
+    const currentUser = await getCurrentUser();
+    if (!currentUser) throw new Error('غير مصرح');
+    await recordDailyPenalty(currentUser, employeeId, date, amount, reason);
+    revalidatePath('/attendance');
+  }
+
+  async function handleRecordDeliveryAllowance(employeeId: string, date: string, amount: number, reason: string) {
+    'use server';
+    const currentUser = await getCurrentUser();
+    if (!currentUser) throw new Error('غير مصرح');
+    await recordDeliveryAllowance(currentUser, employeeId, date, amount, reason);
+    revalidatePath('/attendance');
+  }
+
   async function handleApproveAllDaily(date: string) {
     'use server';
     const currentUser = await getCurrentUser();
@@ -114,6 +132,8 @@ export default async function AttendancePage({
         markAbsentAction={handleMarkAbsent}
         recordEarlyDepartureAction={handleRecordEarlyDeparture}
         updateOvertimeAction={handleUpdateOvertime}
+        recordPenaltyAction={handleRecordPenalty}
+        recordDeliveryAllowanceAction={handleRecordDeliveryAllowance}
         bulkMarkPresentAction={handleBulkMarkPresent}
         approveAllDailyAction={handleApproveAllDaily}
         canApprove={['ADMIN', 'HR'].includes(user.role)}

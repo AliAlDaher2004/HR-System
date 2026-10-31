@@ -11,6 +11,7 @@ export interface NetCalculationResult {
   dailyEarnings: number;
   basicEarned: number;
   allowancesEarned: number;
+  deliveryAllowance: number;
   gratuities: number;
   otHours: number;
   otRate: number;
@@ -45,6 +46,7 @@ export function computeNetPayroll(values: {
   dailyRate?: number;
   basicEarned?: number;
   allowancesEarned?: number;
+  deliveryAllowance?: number;
   gratuities?: number;
   otHours?: number;
   otRate?: number;
@@ -70,6 +72,7 @@ export function computeNetPayroll(values: {
     : (basicEarned > 0 ? (basicEarned / 120) : 0);
   const otRate = (values.otRate && values.otRate > 0 && !isLegacyOtRate(values.otRate)) ? values.otRate : Math.round(calculatedOtRate * 1000) / 1000;
   const gratuities = values.gratuities ?? 0;
+  const deliveryAllowance = values.deliveryAllowance ?? 0;
   const otherAdditions = values.otherAdditions ?? 0;
   const unpaidDays = values.unpaidDays ?? 0;
   const unpaidDayRate = values.unpaidDayRate ?? 0;
@@ -88,6 +91,7 @@ export function computeNetPayroll(values: {
   // Validate non-negative numbers
   if (basicEarned < 0) throw new Error('الراتب الأساسي لا يمكن أن يكون سالباً');
   if (allowancesEarned < 0) throw new Error('البدلات لا يمكن أن تكون سالبة');
+  if (deliveryAllowance < 0) throw new Error('بدل التوصيل لا يمكن أن يكون سالباً');
   if (gratuities < 0) throw new Error('الإكراميات لا يمكن أن تكون سالبة');
   if (otHours < 0) throw new Error('ساعات العمل الإضافي لا يمكن أن تكون سالبة');
   if (otRate < 0) throw new Error('معدل الساعة الإضافية لا يمكن أن يكون سالباً');
@@ -110,8 +114,8 @@ export function computeNetPayroll(values: {
   const socialSecurityDeduction = isSocialSecurity ? Math.round(basicEarned * 0.075 * 1000) / 1000 : 0;
 
   const totalEarnings = isDailyWorker
-    ? dailyEarnings + gratuities + otTotal + otherAdditions
-    : basicEarned + allowancesEarned + gratuities + otTotal + otherAdditions;
+    ? dailyEarnings + gratuities + deliveryAllowance + otTotal + otherAdditions
+    : basicEarned + allowancesEarned + gratuities + deliveryAllowance + otTotal + otherAdditions;
 
   const totalDeductions = socialSecurityDeduction + unpaidDeduction + lateDeduction + earlyDepartureDeduction + otherDeductions + loanDeduction;
   const netPreview = Math.round((totalEarnings - totalDeductions) * 1000) / 1000;
@@ -123,6 +127,7 @@ export function computeNetPayroll(values: {
     dailyEarnings,
     basicEarned,
     allowancesEarned,
+    deliveryAllowance,
     gratuities,
     otHours,
     otRate,
@@ -169,6 +174,7 @@ export async function getPayrolls(
     currency: schema.payroll.currency,
     basicEarned: schema.payroll.basicEarned,
     allowancesEarned: schema.payroll.allowancesEarned,
+    deliveryAllowance: schema.payroll.deliveryAllowance,
     gratuities: schema.payroll.gratuities,
     otHours: schema.payroll.otHours,
     otRate: schema.payroll.otRate,
@@ -215,6 +221,7 @@ export async function getPayrolls(
       dailyRate: parseFloat(p.dailyRate || '0'),
       basicEarned: parseFloat(p.basicEarned || '0'),
       allowancesEarned: parseFloat(p.allowancesEarned || '0'),
+      deliveryAllowance: parseFloat(p.deliveryAllowance || '0'),
       gratuities: parseFloat(p.gratuities || '0'),
       otHours: parseFloat(p.otHours || '0'),
       otRate: parseFloat(p.otRate || '0'),
@@ -232,6 +239,7 @@ export async function getPayrolls(
 
     return {
       ...p,
+      deliveryAllowance: calc.deliveryAllowance.toFixed(3),
       grossPay: calc.grossPay.toFixed(3),
       totalDeductions: calc.totalDeductions.toFixed(3),
       netPreview: calc.netPreview.toFixed(3),
@@ -262,6 +270,7 @@ export async function getPayrollById(actor: UserSession, payrollId: string) {
     currency: schema.payroll.currency,
     basicEarned: schema.payroll.basicEarned,
     allowancesEarned: schema.payroll.allowancesEarned,
+    deliveryAllowance: schema.payroll.deliveryAllowance,
     gratuities: schema.payroll.gratuities,
     otHours: schema.payroll.otHours,
     otRate: schema.payroll.otRate,
@@ -298,6 +307,7 @@ export async function getPayrollById(actor: UserSession, payrollId: string) {
     dailyRate: parseFloat(record.dailyRate || '0'),
     basicEarned: parseFloat(record.basicEarned || '0'),
     allowancesEarned: parseFloat(record.allowancesEarned || '0'),
+    deliveryAllowance: parseFloat(record.deliveryAllowance || '0'),
     gratuities: parseFloat(record.gratuities || '0'),
     otHours: parseFloat(record.otHours || '0'),
     otRate: parseFloat(record.otRate || '0'),
@@ -315,6 +325,7 @@ export async function getPayrollById(actor: UserSession, payrollId: string) {
 
   return {
     ...record,
+    deliveryAllowance: calc.deliveryAllowance.toFixed(3),
     grossPay: calc.grossPay.toFixed(3),
     totalDeductions: calc.totalDeductions.toFixed(3),
     netPreview: calc.netPreview.toFixed(3),
@@ -402,6 +413,7 @@ export async function createPayrollDraft(
     month: number; // 1-12
     basicEarned?: number;
     allowancesEarned?: number;
+    deliveryAllowance?: number;
     gratuities?: number;
     otherAdditions?: number;
     otherDeductions?: number;
@@ -532,6 +544,11 @@ export async function createPayrollDraft(
   const earlyDepartureMinutes = attendances.reduce((acc: number, a: any) => acc + (a.earlyDepartureMinutes || 0), 0);
   const totalOtHours = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.approvedOtHours || '0'), 0);
   const totalUnpaidDays = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.unpaidDays || '0'), 0);
+  const totalDailyDelivery = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.deliveryAllowance || '0'), 0);
+  const totalDailyPenalties = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.penaltyAmount || '0'), 0);
+
+  const finalDeliveryAllowance = data.deliveryAllowance !== undefined ? data.deliveryAllowance : totalDailyDelivery;
+  const finalOtherDeductions = data.otherDeductions !== undefined ? data.otherDeductions : totalDailyPenalties;
 
   if (isDailyWorker) {
     basicEarned = workedDays * dailyRate;
@@ -583,6 +600,7 @@ export async function createPayrollDraft(
     currency,
     basicEarned: basicEarned.toFixed(3),
     allowancesEarned: allowancesEarned.toFixed(3),
+    deliveryAllowance: finalDeliveryAllowance.toFixed(3),
     gratuities: (data.gratuities ?? 0).toFixed(3),
     otHours: totalOtHours.toFixed(2),
     otRate: otRate.toFixed(3),
@@ -596,7 +614,7 @@ export async function createPayrollDraft(
     earlyDepartureDeduction: earlyDepartureDeduction.toFixed(3),
     dailyRate: dailyRate.toFixed(3),
     otherAdditions: (data.otherAdditions ?? 0).toFixed(3),
-    otherDeductions: (data.otherDeductions ?? 0).toFixed(3),
+    otherDeductions: finalOtherDeductions.toFixed(3),
     loanDeduction: '0.000',
     netPay: null,
     status: 'DRAFT',
@@ -628,6 +646,7 @@ export async function createPayrollDraft(
     dailyRate,
     basicEarned,
     allowancesEarned,
+    deliveryAllowance: finalDeliveryAllowance,
     gratuities: data.gratuities ?? 0,
     otHours: totalOtHours,
     otRate,
@@ -639,12 +658,13 @@ export async function createPayrollDraft(
     lateDeduction,
     earlyDepartureMinutes,
     earlyDepartureDeduction,
-    otherDeductions: data.otherDeductions ?? 0,
+    otherDeductions: finalOtherDeductions,
     loanDeduction: autoLoanDeduction,
   });
 
   return {
     ...inserted,
+    deliveryAllowance: calc.deliveryAllowance.toFixed(3),
     employmentType: emp.employmentType,
     lateDeductions: inserted.lateDeduction,
     earlyDepartureDeductions: inserted.earlyDepartureDeduction,
@@ -1162,6 +1182,7 @@ export async function updatePayrollDraft(
   actor: UserSession,
   data: {
     payrollId: string;
+    deliveryAllowance?: number;
     gratuities?: number;
     otherAdditions?: number;
     otherDeductions?: number;
@@ -1204,6 +1225,7 @@ export async function updatePayrollDraft(
     ? parseFloat(emp.minuteDeductionRate)
     : (dynamicMinuteRate > 0 ? dynamicMinuteRate : (settings?.defaultMinuteDeductionRate ? parseFloat(settings.defaultMinuteDeductionRate) : 0));
 
+  const updatedDeliveryAllowance = data.deliveryAllowance !== undefined ? data.deliveryAllowance : parseFloat(payrollRecord.deliveryAllowance || '0');
   const updatedGratuities = data.gratuities !== undefined ? data.gratuities : parseFloat(payrollRecord.gratuities || '0');
   const updatedOtherAdditions = data.otherAdditions !== undefined ? data.otherAdditions : parseFloat(payrollRecord.otherAdditions);
   const updatedOtherDeductions = data.otherDeductions !== undefined ? data.otherDeductions : parseFloat(payrollRecord.otherDeductions);
@@ -1213,6 +1235,7 @@ export async function updatePayrollDraft(
   const updatedOtHours = data.otHours !== undefined ? data.otHours : parseFloat(payrollRecord.otHours);
   const updatedNotes = data.notes !== undefined ? data.notes : (payrollRecord.notes || undefined);
 
+  if (updatedDeliveryAllowance < 0) throw new Error('بدل التوصيل لا يمكن أن يكون سالباً');
   if (updatedGratuities < 0) throw new Error('الإكراميات لا يمكن أن تكون سالبة');
   if (updatedOtherAdditions < 0) throw new Error('الإضافات الأخرى لا يمكن أن تكون سالبة');
   if (updatedOtherDeductions < 0) throw new Error('الخصومات الأخرى لا يمكن أن تكون سالبة');
@@ -1246,6 +1269,7 @@ export async function updatePayrollDraft(
   const [updated] = await db.update(schema.payroll)
     .set({
       allowancesEarned: updatedAllowancesEarned.toFixed(3),
+      deliveryAllowance: updatedDeliveryAllowance.toFixed(3),
       gratuities: updatedGratuities.toFixed(3),
       otherAdditions: updatedOtherAdditions.toFixed(3),
       otherDeductions: updatedOtherDeductions.toFixed(3),
@@ -1357,6 +1381,420 @@ export async function approveBulkPayrollForMonth(
   });
 
   return { approvedCount, errors };
+}
+
+export interface MonthlyAdjustmentRow {
+  employeeId: string;
+  employeeNo: string;
+  name: string;
+  department: string;
+  jobTitle: string;
+  employmentType: 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER';
+  socialSecurityRegistered: boolean;
+  workedDays: number;
+  otHours: number;
+  unpaidDays: number;
+  basicEarned: number;
+  allowancesEarned: number;
+  otRate: number;
+  otTotal: number;
+  unpaidDeduction: number;
+  lateMinutes: number;
+  lateDeduction: number;
+  earlyDepartureMinutes: number;
+  earlyDepartureDeduction: number;
+  socialSecurityDeduction: number;
+  loanDeduction: number;
+  deliveryAllowance: number;
+  deliveryDetails: Array<{ date: string; amount: number; reason: string }>;
+  bonus: number;
+  bonusReason: string;
+  dailyPenalties: number;
+  penaltyDetails: Array<{ date: string; amount: number; reason: string }>;
+  otherDeductions: number;
+  deductionReason: string;
+  notes: string;
+  netPreview: number;
+  payrollId: string | null;
+  payrollStatus: 'DRAFT' | 'APPROVED' | 'PAID' | 'CANCELLED' | 'NOT_GENERATED';
+}
+
+export interface SaveAdjustmentItem {
+  employeeId: string;
+  deliveryAllowance: number;
+  bonus: number;
+  bonusReason?: string;
+  dailyPenalties: number;
+  otherDeductions: number;
+  deductionReason?: string;
+  notes?: string;
+}
+
+export async function getMonthlyPayrollAdjustmentSheet(
+  actor: UserSession,
+  month: string // YYYY-MM
+): Promise<{
+  month: string;
+  periodStart: string;
+  periodEnd: string;
+  rows: MonthlyAdjustmentRow[];
+  summary: {
+    totalEmployees: number;
+    totalBasicAndAllowances: number;
+    totalOtAmount: number;
+    totalDeliveryAllowance: number;
+    totalBonus: number;
+    totalPenaltiesAndDeductions: number;
+    totalNetPay: number;
+  };
+}> {
+  assertCanViewFinancials(actor);
+  const db = getDb();
+
+  const [yearStr, monthStr] = month.split('-');
+  const year = parseInt(yearStr, 10);
+  const monthNum = parseInt(monthStr, 10);
+  const periodStart = `${month}-01`;
+  const lastDay = new Date(Date.UTC(year, monthNum, 0)).getUTCDate();
+  const periodEnd = `${month}-${String(lastDay).padStart(2, '0')}`;
+
+  const eligibleEmployees = await db
+    .select()
+    .from(schema.employees)
+    .where(
+      and(
+        lte(schema.employees.startDate, periodEnd),
+        sql`(${schema.employees.endDate} IS NULL OR ${schema.employees.endDate} >= ${periodStart})`,
+        sql`(${schema.employees.status} = 'ACTIVE' OR (${schema.employees.endDate} IS NOT NULL AND ${schema.employees.endDate} >= ${periodStart}))`
+      )
+    )
+    .orderBy(schema.employees.employeeNo);
+
+  const existingPayrolls = await db
+    .select()
+    .from(schema.payroll)
+    .where(
+      and(
+        eq(schema.payroll.periodStart, periodStart),
+        sql`status != 'CANCELLED'`
+      )
+    );
+  const payrollMap = new Map<string, any>(existingPayrolls.map((p: any) => [p.employeeId, p]));
+
+  const rows: MonthlyAdjustmentRow[] = [];
+
+  for (const emp of eligibleEmployees) {
+    const isDailyWorker = emp.employmentType === 'DAILY_WORKER';
+    let dailyRate = 0;
+    let fullMonthlyBasic = 0;
+    let activeContract: any = null;
+
+    if (isDailyWorker) {
+      const historyRates = await db.select().from(schema.dailyRateHistory).where(
+        and(
+          eq(schema.dailyRateHistory.employeeId, emp.id),
+          lte(schema.dailyRateHistory.effectiveFrom, periodEnd),
+          sql`(${schema.dailyRateHistory.effectiveTo} IS NULL OR ${schema.dailyRateHistory.effectiveTo} >= ${periodStart})`
+        )
+      ).orderBy(desc(schema.dailyRateHistory.effectiveFrom));
+
+      dailyRate = historyRates.length > 0
+        ? parseFloat(historyRates[0].dailyRate)
+        : (emp.dailyRate ? parseFloat(emp.dailyRate) : 0);
+    } else {
+      const contracts = await db.select().from(schema.contracts).where(
+        and(
+          eq(schema.contracts.employeeId, emp.id),
+          lte(schema.contracts.startDate, periodEnd),
+          sql`(end_date IS NULL OR end_date >= ${periodStart})`
+        )
+      ).orderBy(desc(schema.contracts.startDate));
+
+      if (contracts.length > 0) {
+        activeContract = contracts[0];
+        fullMonthlyBasic = parseFloat(activeContract.monthlyBasic || '0');
+      }
+    }
+
+    const effectiveStart = emp.startDate > periodStart ? emp.startDate : periodStart;
+    const effectiveEnd = emp.endDate && emp.endDate < periodEnd ? emp.endDate : periodEnd;
+    const isPartialMonth = effectiveStart > periodStart || Boolean(emp.endDate && emp.endDate < periodEnd);
+
+    const attendances = await db.select().from(schema.attendance).where(
+      and(
+        eq(schema.attendance.employeeId, emp.id),
+        gte(schema.attendance.workDate, effectiveStart),
+        lte(schema.attendance.workDate, effectiveEnd)
+      )
+    );
+
+    const workedDays = attendances.filter((a: any) => a.attendanceType === 'PRESENT').length;
+    const workedMinutes = attendances.reduce((acc: number, a: any) => acc + (a.workedMinutes || 0), 0);
+    const lateMinutes = attendances.reduce((acc: number, a: any) => acc + (a.lateMinutes || 0), 0);
+    const earlyDepartureMinutes = attendances.reduce((acc: number, a: any) => acc + (a.earlyDepartureMinutes || 0), 0);
+    const otHours = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.approvedOtHours || '0'), 0);
+    const unpaidDays = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.unpaidDays || '0'), 0);
+
+    const deliveryDetails = attendances
+      .filter((a: any) => parseFloat(a.deliveryAllowance || '0') > 0)
+      .map((a: any) => ({
+        date: a.workDate,
+        amount: parseFloat(a.deliveryAllowance),
+        reason: a.deliveryReason || 'بدل توصيل',
+      }));
+    const dailyDeliveryTotal = Math.round(deliveryDetails.reduce((acc: number, i: { amount: number }) => acc + i.amount, 0) * 1000) / 1000;
+
+    const penaltyDetails = attendances
+      .filter((a: any) => parseFloat(a.penaltyAmount || '0') > 0)
+      .map((a: any) => ({
+        date: a.workDate,
+        amount: parseFloat(a.penaltyAmount),
+        reason: a.penaltyReason || 'مخالفة',
+      }));
+    const dailyPenaltyTotal = Math.round(penaltyDetails.reduce((acc: number, i: { amount: number }) => acc + i.amount, 0) * 1000) / 1000;
+
+    let basicEarned = 0;
+    let allowancesEarned = 0;
+    if (isDailyWorker) {
+      basicEarned = Math.round(workedDays * dailyRate * 1000) / 1000;
+      allowancesEarned = 0;
+    } else {
+      if (isPartialMonth) {
+        const startMs = new Date(effectiveStart).getTime();
+        const endMs = new Date(effectiveEnd).getTime();
+        const activeDays = Math.max(0, Math.min(30, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1));
+        basicEarned = Math.round((fullMonthlyBasic / 30) * activeDays * 1000) / 1000;
+        allowancesEarned = Math.max(0, activeDays - unpaidDays);
+      } else {
+        basicEarned = fullMonthlyBasic;
+        allowancesEarned = Math.max(0, 30 - unpaidDays);
+      }
+    }
+
+    const calculatedOtRate = isDailyWorker
+      ? (dailyRate > 0 ? (dailyRate / 4) : 0)
+      : (fullMonthlyBasic > 0 ? (fullMonthlyBasic / 120) : 0);
+    const otRate = (activeContract?.otRate && parseFloat(activeContract.otRate) > 0 && !isLegacyOtRate(parseFloat(activeContract.otRate)))
+      ? parseFloat(activeContract.otRate)
+      : Math.round(calculatedOtRate * 1000) / 1000;
+    const otTotal = Math.round(otHours * otRate * 1000) / 1000;
+
+    const unpaidDayRate = isDailyWorker ? 0 : Math.round((fullMonthlyBasic / 30) * 1000) / 1000;
+    const unpaidDeduction = isDailyWorker ? 0 : Math.round(unpaidDays * unpaidDayRate * 1000) / 1000;
+
+    const minuteDeductionRate = isDailyWorker
+      ? (dailyRate > 0 ? (dailyRate / 480) : 0)
+      : (fullMonthlyBasic > 0 ? (fullMonthlyBasic / 14400) : 0);
+    const lateDeduction = Math.round(lateMinutes * minuteDeductionRate * 1000) / 1000;
+    const earlyDepartureDeduction = Math.round(earlyDepartureMinutes * minuteDeductionRate * 1000) / 1000;
+
+    const socialSecurityDeduction = emp.socialSecurityRegistered
+      ? Math.round(basicEarned * 0.075 * 1000) / 1000
+      : 0;
+
+    const draft = payrollMap.get(emp.id);
+    const payrollId = draft ? draft.id : null;
+    const payrollStatus = draft ? draft.status : 'NOT_GENERATED';
+
+    let deliveryAllowance = dailyDeliveryTotal;
+    let bonus = 0;
+    let bonusReason = '';
+    let otherDeductions = 0;
+    let deductionReason = '';
+    let notes = '';
+    let loanDeduction = 0;
+
+    if (draft) {
+      if (draft.deliveryAllowance !== undefined && parseFloat(draft.deliveryAllowance || '0') > 0) {
+        deliveryAllowance = parseFloat(draft.deliveryAllowance);
+      }
+      bonus = parseFloat(draft.gratuities || '0');
+      const draftOtherDeductions = parseFloat(draft.otherDeductions || '0');
+      if (draftOtherDeductions >= dailyPenaltyTotal) {
+        otherDeductions = Math.round((draftOtherDeductions - dailyPenaltyTotal) * 1000) / 1000;
+      } else {
+        otherDeductions = draftOtherDeductions;
+      }
+      notes = draft.notes || '';
+      loanDeduction = parseFloat(draft.loanDeduction || '0');
+    }
+
+    const calc = computeNetPayroll({
+      employmentType: emp.employmentType,
+      workedDays,
+      dailyRate,
+      basicEarned,
+      allowancesEarned,
+      deliveryAllowance,
+      gratuities: bonus,
+      otHours,
+      otRate,
+      otherAdditions: 0,
+      unpaidDays,
+      unpaidDayRate,
+      socialSecurityRegistered: emp.socialSecurityRegistered,
+      lateMinutes,
+      lateDeduction,
+      earlyDepartureMinutes,
+      earlyDepartureDeduction,
+      otherDeductions: Math.round((dailyPenaltyTotal + otherDeductions) * 1000) / 1000,
+      loanDeduction,
+    });
+
+    rows.push({
+      employeeId: emp.id,
+      employeeNo: emp.employeeNo,
+      name: emp.name,
+      department: emp.department,
+      jobTitle: emp.jobTitle || 'موظف',
+      employmentType: emp.employmentType,
+      socialSecurityRegistered: emp.socialSecurityRegistered || false,
+      workedDays,
+      otHours,
+      unpaidDays,
+      basicEarned,
+      allowancesEarned,
+      otRate,
+      otTotal,
+      unpaidDeduction,
+      lateMinutes,
+      lateDeduction,
+      earlyDepartureMinutes,
+      earlyDepartureDeduction,
+      socialSecurityDeduction,
+      loanDeduction,
+      deliveryAllowance,
+      deliveryDetails,
+      bonus,
+      bonusReason,
+      dailyPenalties: dailyPenaltyTotal,
+      penaltyDetails,
+      otherDeductions,
+      deductionReason,
+      notes,
+      netPreview: calc.netPreview,
+      payrollId,
+      payrollStatus,
+    });
+  }
+
+  const summary = {
+    totalEmployees: rows.length,
+    totalBasicAndAllowances: Math.round(rows.reduce((acc, r) => acc + r.basicEarned + r.allowancesEarned, 0) * 1000) / 1000,
+    totalOtAmount: Math.round(rows.reduce((acc, r) => acc + r.otTotal, 0) * 1000) / 1000,
+    totalDeliveryAllowance: Math.round(rows.reduce((acc, r) => acc + r.deliveryAllowance, 0) * 1000) / 1000,
+    totalBonus: Math.round(rows.reduce((acc, r) => acc + r.bonus, 0) * 1000) / 1000,
+    totalPenaltiesAndDeductions: Math.round(rows.reduce((acc, r) => acc + r.dailyPenalties + r.otherDeductions, 0) * 1000) / 1000,
+    totalNetPay: Math.round(rows.reduce((acc, r) => acc + r.netPreview, 0) * 1000) / 1000,
+  };
+
+  return {
+    month,
+    periodStart,
+    periodEnd,
+    rows,
+    summary,
+  };
+}
+
+export async function saveMonthlyPayrollAdjustments(
+  actor: UserSession,
+  month: string, // YYYY-MM
+  adjustments: SaveAdjustmentItem[]
+): Promise<{
+  success: boolean;
+  savedCount: number;
+  month: string;
+}> {
+  requireRole(actor, ['ADMIN', 'ACCOUNTANT']);
+  const db = getDb();
+
+  const [yearStr, monthStr] = month.split('-');
+  const year = parseInt(yearStr, 10);
+  const monthNum = parseInt(monthStr, 10);
+  const periodStart = `${month}-01`;
+
+  let savedCount = 0;
+
+  for (const item of adjustments) {
+    const delivery = Number(item.deliveryAllowance) || 0;
+    const bonus = Number(item.bonus) || 0;
+    const dailyPenalties = Number(item.dailyPenalties) || 0;
+    const otherDeductions = Number(item.otherDeductions) || 0;
+    const totalOtherDeductions = Math.round((dailyPenalties + otherDeductions) * 1000) / 1000;
+
+    // Build consolidated notes
+    const noteParts: string[] = [];
+    if (delivery > 0) {
+      noteParts.push(`بدل توصيل: ${delivery.toFixed(3)} د.أ`);
+    }
+    if (bonus > 0) {
+      noteParts.push(`مكافأة: ${bonus.toFixed(3)} د.أ${item.bonusReason ? ` (${item.bonusReason})` : ''}`);
+    }
+    if (dailyPenalties > 0) {
+      noteParts.push(`مخالفات حضور: ${dailyPenalties.toFixed(3)} د.أ`);
+    }
+    if (otherDeductions > 0) {
+      noteParts.push(`خصومات عقابية: ${otherDeductions.toFixed(3)} د.أ${item.deductionReason ? ` (${item.deductionReason})` : ''}`);
+    }
+    if (item.notes && item.notes.trim()) {
+      noteParts.push(item.notes.trim());
+    }
+    const combinedNotes = noteParts.join(' | ');
+
+    // Check if payroll draft already exists
+    const [existing] = await db.select().from(schema.payroll).where(
+      and(
+        eq(schema.payroll.employeeId, item.employeeId),
+        eq(schema.payroll.periodStart, periodStart),
+        sql`status != 'CANCELLED'`
+      )
+    );
+
+    if (existing) {
+      if (existing.status !== 'DRAFT') {
+        // Skip updating locked/paid/approved payrolls to preserve approved state
+        continue;
+      }
+      await updatePayrollDraft(actor, {
+        payrollId: existing.id,
+        deliveryAllowance: delivery,
+        gratuities: bonus,
+        otherDeductions: totalOtherDeductions,
+        notes: combinedNotes,
+      });
+      savedCount++;
+    } else {
+      await createPayrollDraft(actor, {
+        employeeId: item.employeeId,
+        year,
+        month: monthNum,
+        deliveryAllowance: delivery,
+        gratuities: bonus,
+        otherDeductions: totalOtherDeductions,
+        notes: combinedNotes,
+      });
+      savedCount++;
+    }
+  }
+
+  await logAuditEvent({
+    actor,
+    tableName: 'payroll',
+    recordId: `ADJUSTMENTS_${month}`,
+    action: 'SAVE_MONTHLY_PAYROLL_ADJUSTMENTS',
+    metadata: {
+      month,
+      savedCount,
+      totalRequested: adjustments.length,
+    },
+  });
+
+  return {
+    success: true,
+    savedCount,
+    month,
+  };
 }
 
 

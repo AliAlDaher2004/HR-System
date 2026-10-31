@@ -37,7 +37,8 @@ export default async function ConsolidatedPayrollPage({
       ? 0
       : (p.allowancesEarned !== undefined && p.allowancesEarned !== null ? Number(p.allowancesEarned) : Math.max(0, 30 - unpaidDays));
 
-    const gratuities = Number(p.gratuities || 0);
+    const deliveryAllowance = Number(p.deliveryAllowance || 0);
+    const gratuities = Number(p.gratuities || 0) + deliveryAllowance;
     const otHours = Number(p.otHours || 0);
     const calculatedOtRate = basicEarned > 0 ? ((basicEarned / 26) / 9) * 2 : 0;
     const otRate = Number(p.otRate || 0) > 0 ? Number(p.otRate) : calculatedOtRate;
