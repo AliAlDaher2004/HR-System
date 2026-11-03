@@ -208,4 +208,52 @@ describe('Daily Penalties, Delivery Allowances, and Monthly Payroll Adjustments'
     expect(parseFloat(payslip.otherDeductions)).toBe(15);
     expect(parseFloat(payslip.netPay)).toBe(445);
   });
+
+  it('4. saveMonthlyPayrollAdjustments allows custom transportation allowance override and updates payslip statement accurately', async () => {
+    // Override transportation allowance to 50 JOD (instead of default 30 JOD)
+    const res = await saveMonthlyPayrollAdjustments(adminUser, testMonth, [
+      {
+        employeeId: testEmpId,
+        allowancesEarned: 50,
+        deliveryAllowance: 5,
+        bonus: 30,
+        bonusReason: 'مكافأة إضافية',
+        dailyPenalties: 10,
+        otherDeductions: 0,
+        notes: 'تعديل بدل المواصلات إلى 50',
+      },
+    ]);
+    expect(res.success).toBe(true);
+
+    // Verify payroll record has updated allowancesEarned = 50
+    const db = getDb();
+    const [draft] = await db.select().from(schema.payroll).where(
+      eq(schema.payroll.employeeId, testEmpId)
+    );
+    expect(draft).toBeDefined();
+    expect(parseFloat(draft.allowancesEarned)).toBe(50);
+    expect(parseFloat(draft.gratuities || '0')).toBe(30);
+
+    // Verify sheet reloads with the edited 50 JOD transportation allowance
+    const sheet = await getMonthlyPayrollAdjustmentSheet(adminUser, testMonth);
+    const row = sheet.rows.find((r) => r.employeeId === testEmpId);
+    expect(row).toBeDefined();
+    expect(row!.allowancesEarned).toBe(50);
+    expect(row!.bonus).toBe(30);
+
+    // Verify individual payslip data (بيان الراتب) receives updated transportation allowance & bonus
+    const payslip = await getPayslipData(adminUser, draft.id);
+    expect(payslip).toBeDefined();
+    expect(parseFloat(payslip.allowancesEarned)).toBe(50);
+    expect(parseFloat(payslip.tipsGratuities)).toBe(30);
+    expect(parseFloat(payslip.deliveryAllowance)).toBe(5);
+    expect(parseFloat(payslip.otherDeductions)).toBe(10); // daily penalty only
+
+    // basic (400) + transport (50) + delivery (5) + bonus (30) = 485 earnings
+    // deductions = 10 (penalties)
+    // net = 485 - 10 = 475
+    expect(parseFloat(payslip.totalEarnings)).toBe(485);
+    expect(parseFloat(payslip.totalDeductions)).toBe(10);
+    expect(parseFloat(payslip.netPay)).toBe(475);
+  });
 });

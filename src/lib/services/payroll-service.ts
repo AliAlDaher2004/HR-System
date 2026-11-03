@@ -1182,6 +1182,7 @@ export async function updatePayrollDraft(
   actor: UserSession,
   data: {
     payrollId: string;
+    allowancesEarned?: number;
     deliveryAllowance?: number;
     gratuities?: number;
     otherAdditions?: number;
@@ -1247,22 +1248,28 @@ export async function updatePayrollDraft(
   const lateDeduction = Math.round(updatedLateMinutes * minuteDeductionRate * 1000) / 1000;
   const earlyDepartureDeduction = Math.round(updatedEarlyDepartureMinutes * minuteDeductionRate * 1000) / 1000;
 
-  // Update allowances earned: 30 JOD minus 1 JOD per absence day for permanent workers (prorated for partial tenure)
+  // Update allowances earned: custom override or 30 JOD minus 1 JOD per absence day for permanent workers (prorated for partial tenure)
   const isDailyWorker = emp?.employmentType === 'DAILY_WORKER';
   let updatedAllowancesEarned = 0;
   if (!isDailyWorker) {
-    const effectiveStart = emp ? (emp.startDate > payrollRecord.periodStart ? emp.startDate : payrollRecord.periodStart) : payrollRecord.periodStart;
-    const effectiveEnd = emp && emp.endDate && emp.endDate < payrollRecord.periodEnd ? emp.endDate : payrollRecord.periodEnd;
-    const isPartial = effectiveStart > payrollRecord.periodStart || Boolean(emp?.endDate && emp.endDate < payrollRecord.periodEnd);
-    if (isPartial) {
-      const startMs = new Date(effectiveStart).getTime();
-      const endMs = new Date(effectiveEnd).getTime();
-      const activeDays = Math.max(0, Math.min(30, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1));
-      updatedAllowancesEarned = Math.max(0, activeDays - updatedUnpaidDays);
+    if (data.allowancesEarned !== undefined) {
+      updatedAllowancesEarned = data.allowancesEarned;
     } else {
-      updatedAllowancesEarned = Math.max(0, 30 - updatedUnpaidDays);
+      const effectiveStart = emp ? (emp.startDate > payrollRecord.periodStart ? emp.startDate : payrollRecord.periodStart) : payrollRecord.periodStart;
+      const effectiveEnd = emp && emp.endDate && emp.endDate < payrollRecord.periodEnd ? emp.endDate : payrollRecord.periodEnd;
+      const isPartial = effectiveStart > payrollRecord.periodStart || Boolean(emp?.endDate && emp.endDate < payrollRecord.periodEnd);
+      if (isPartial) {
+        const startMs = new Date(effectiveStart).getTime();
+        const endMs = new Date(effectiveEnd).getTime();
+        const activeDays = Math.max(0, Math.min(30, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1));
+        updatedAllowancesEarned = Math.max(0, activeDays - updatedUnpaidDays);
+      } else {
+        updatedAllowancesEarned = Math.max(0, 30 - updatedUnpaidDays);
+      }
     }
   }
+
+  if (updatedAllowancesEarned < 0) throw new Error('بدل المواصلات لا يمكن أن يكون سالباً');
 
   const totalLoanDeduction = await syncEmployeeLoanRepaymentsForPayroll(db, payrollRecord.employeeId, data.payrollId, payrollRecord.periodEnd, actor.id);
 
@@ -1421,6 +1428,7 @@ export interface MonthlyAdjustmentRow {
 
 export interface SaveAdjustmentItem {
   employeeId: string;
+  allowancesEarned?: number;
   deliveryAllowance: number;
   bonus: number;
   bonusReason?: string;
@@ -1605,6 +1613,9 @@ export async function getMonthlyPayrollAdjustmentSheet(
     let loanDeduction = 0;
 
     if (draft) {
+      if (draft.allowancesEarned !== undefined && draft.allowancesEarned !== null) {
+        allowancesEarned = parseFloat(draft.allowancesEarned);
+      }
       if (draft.deliveryAllowance !== undefined && parseFloat(draft.deliveryAllowance || '0') > 0) {
         deliveryAllowance = parseFloat(draft.deliveryAllowance);
       }
@@ -1722,9 +1733,13 @@ export async function saveMonthlyPayrollAdjustments(
     const dailyPenalties = Number(item.dailyPenalties) || 0;
     const otherDeductions = Number(item.otherDeductions) || 0;
     const totalOtherDeductions = Math.round((dailyPenalties + otherDeductions) * 1000) / 1000;
+    const allowancesEarned = item.allowancesEarned !== undefined ? Number(item.allowancesEarned) : undefined;
 
     // Build consolidated notes
     const noteParts: string[] = [];
+    if (allowancesEarned !== undefined) {
+      noteParts.push(`بدل مواصلات: ${allowancesEarned.toFixed(3)} د.أ`);
+    }
     if (delivery > 0) {
       noteParts.push(`بدل توصيل: ${delivery.toFixed(3)} د.أ`);
     }
@@ -1758,6 +1773,7 @@ export async function saveMonthlyPayrollAdjustments(
       }
       await updatePayrollDraft(actor, {
         payrollId: existing.id,
+        allowancesEarned,
         deliveryAllowance: delivery,
         gratuities: bonus,
         otherDeductions: totalOtherDeductions,
@@ -1769,6 +1785,7 @@ export async function saveMonthlyPayrollAdjustments(
         employeeId: item.employeeId,
         year,
         month: monthNum,
+        allowancesEarned,
         deliveryAllowance: delivery,
         gratuities: bonus,
         otherDeductions: totalOtherDeductions,

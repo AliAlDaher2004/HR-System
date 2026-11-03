@@ -49,6 +49,7 @@ export function PayrollAdjustmentsClient({
     Record<
       string,
       {
+        allowancesEarned: number;
         deliveryAllowance: number;
         bonus: number;
         bonusReason: string;
@@ -62,6 +63,7 @@ export function PayrollAdjustmentsClient({
     const init: Record<string, any> = {};
     initialRows.forEach((r) => {
       init[r.employeeId] = {
+        allowancesEarned: r.allowancesEarned,
         deliveryAllowance: r.deliveryAllowance,
         bonus: r.bonus,
         bonusReason: r.bonusReason || '',
@@ -112,7 +114,7 @@ export function PayrollAdjustmentsClient({
   // Update specific field for an employee
   const handleFieldChange = (
     empId: string,
-    field: 'deliveryAllowance' | 'bonus' | 'bonusReason' | 'dailyPenalties' | 'otherDeductions' | 'deductionReason' | 'notes',
+    field: 'allowancesEarned' | 'deliveryAllowance' | 'bonus' | 'bonusReason' | 'dailyPenalties' | 'otherDeductions' | 'deductionReason' | 'notes',
     value: any
   ) => {
     setRowEdits((prev) => ({
@@ -131,6 +133,7 @@ export function PayrollAdjustmentsClient({
     setRowEdits((prev) => ({
       ...prev,
       [empId]: {
+        allowancesEarned: original.allowancesEarned,
         deliveryAllowance: original.deliveryDetails.reduce((a, b) => a + b.amount, 0),
         bonus: 0,
         bonusReason: '',
@@ -146,6 +149,7 @@ export function PayrollAdjustmentsClient({
   const calculatedRows = useMemo(() => {
     return initialRows.map((r) => {
       const edit = rowEdits[r.employeeId] || {
+        allowancesEarned: r.allowancesEarned,
         deliveryAllowance: r.deliveryAllowance,
         bonus: r.bonus,
         bonusReason: '',
@@ -155,12 +159,13 @@ export function PayrollAdjustmentsClient({
         notes: '',
       };
 
+      const allowancesVal = edit.allowancesEarned !== undefined ? Number(edit.allowancesEarned) : r.allowancesEarned;
       const deliveryVal = Number(edit.deliveryAllowance) || 0;
       const bonusVal = Number(edit.bonus) || 0;
       const dailyPenaltiesVal = Number(edit.dailyPenalties) || 0;
       const otherDeductionsVal = Number(edit.otherDeductions) || 0;
 
-      const totalEarnings = r.basicEarned + r.allowancesEarned + r.otTotal + deliveryVal + bonusVal;
+      const totalEarnings = r.basicEarned + allowancesVal + r.otTotal + deliveryVal + bonusVal;
       const totalAttendanceDeductions = r.unpaidDeduction + r.lateDeduction + r.earlyDepartureDeduction;
       const totalStatutoryDeductions = r.socialSecurityDeduction + r.loanDeduction;
       const totalPenalties = dailyPenaltiesVal + otherDeductionsVal;
@@ -169,13 +174,15 @@ export function PayrollAdjustmentsClient({
       const netPay = Math.max(0, Math.round((totalEarnings - totalDeductions) * 1000) / 1000);
 
       // Check if this employee has changes
+      const hasAllowanceChange = Math.abs(allowancesVal - r.allowancesEarned) > 0.001;
       const hasDelivery = deliveryVal > 0;
       const hasBonus = bonusVal > 0;
       const hasPenalties = dailyPenaltiesVal > 0 || otherDeductionsVal > 0;
-      const hasAnyAdjustments = hasDelivery || hasBonus || hasPenalties;
+      const hasAnyAdjustments = hasAllowanceChange || hasDelivery || hasBonus || hasPenalties;
 
       return {
         ...r,
+        allowancesVal,
         deliveryVal,
         bonusVal,
         dailyPenaltiesVal,
@@ -219,7 +226,7 @@ export function PayrollAdjustmentsClient({
     return calculatedRows.reduce(
       (acc, r) => ({
         count: acc.count + 1,
-        basicAndAllowances: acc.basicAndAllowances + r.basicEarned + r.allowancesEarned,
+        basicAndAllowances: acc.basicAndAllowances + r.basicEarned + r.allowancesVal,
         otTotal: acc.otTotal + r.otTotal,
         deliveryTotal: acc.deliveryTotal + r.deliveryVal,
         bonusTotal: acc.bonusTotal + r.bonusVal,
@@ -249,6 +256,7 @@ export function PayrollAdjustmentsClient({
 
     const payload: SaveAdjustmentItem[] = initialRows.map((r) => {
       const edit = rowEdits[r.employeeId] || {
+        allowancesEarned: r.allowancesEarned,
         deliveryAllowance: r.deliveryAllowance,
         bonus: r.bonus,
         bonusReason: '',
@@ -260,6 +268,7 @@ export function PayrollAdjustmentsClient({
 
       return {
         employeeId: r.employeeId,
+        allowancesEarned: edit.allowancesEarned !== undefined ? Number(edit.allowancesEarned) : r.allowancesEarned,
         deliveryAllowance: Number(edit.deliveryAllowance) || 0,
         bonus: Number(edit.bonus) || 0,
         bonusReason: edit.bonusReason?.trim() || undefined,
@@ -547,8 +556,12 @@ export function PayrollAdjustmentsClient({
               <th className="p-1.5 border-l border-slate-300 text-center min-w-[90px]">
                 الدوام والغياب
               </th>
-              <th className="p-1.5 border-l border-slate-300 text-center min-w-[95px]">
-                الأساسي والمواصلات
+              <th className="p-1.5 border-l border-slate-300 text-center min-w-[130px] bg-blue-50/70">
+                <div className="font-bold text-slate-800">الأساسي</div>
+                <div className="flex items-center justify-center gap-1 text-blue-900 font-bold text-[10px] mt-0.5">
+                  <span>🚌</span>
+                  <span>بدل مواصلات</span>
+                </div>
               </th>
               <th className="p-1.5 border-l border-slate-300 text-center min-w-[100px]">
                 العمل الإضافي
@@ -600,6 +613,7 @@ export function PayrollAdjustmentsClient({
             ) : (
               filteredRows.map((r, idx) => {
                 const edit = rowEdits[r.employeeId] || {
+                  allowancesEarned: r.allowancesEarned,
                   deliveryAllowance: r.deliveryAllowance,
                   bonus: r.bonus,
                   bonusReason: '',
@@ -665,11 +679,32 @@ export function PayrollAdjustmentsClient({
                       )}
                     </td>
 
-                    {/* Basic & Allowances */}
-                    <td className="p-1 border-l border-slate-200 text-center font-mono text-[11px]">
-                      <div className="font-bold text-slate-800">{r.basicEarned.toFixed(3)}</div>
-                      <div className="text-[10px] text-slate-500">
-                        مواصلات: {r.allowancesEarned.toFixed(3)}
+                    {/* Basic & Allowances (Editable Transportation) */}
+                    <td className="p-1.5 border-l border-slate-200 text-center font-mono text-[11px] bg-blue-50/20">
+                      <div className="font-bold text-slate-800 text-[11px]" title="الراتب الأساسي المستحق">{r.basicEarned.toFixed(3)}</div>
+                      <div className="flex items-center justify-center gap-1 mt-1" title="بدل المواصلات الشهري (قابل للتعديل)">
+                        <span className="text-[10px] text-slate-500 font-sans">مواصلات:</span>
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          disabled={r.employmentType === 'DAILY_WORKER'}
+                          value={edit.allowancesEarned === 0 && r.employmentType === 'DAILY_WORKER' ? '0' : (edit.allowancesEarned ?? '')}
+                          placeholder="0.000"
+                          onChange={(e) =>
+                            handleFieldChange(
+                              r.employeeId,
+                              'allowancesEarned',
+                              e.target.value === '' ? 0 : parseFloat(e.target.value) || 0
+                            )
+                          }
+                          className={`win-input font-mono font-bold text-[11px] w-16 px-1 py-0.5 text-center border ${
+                            Math.abs((edit.allowancesEarned ?? r.allowancesEarned) - r.allowancesEarned) > 0.001
+                              ? 'border-amber-500 bg-amber-50 text-amber-950 font-black'
+                              : 'border-blue-300 bg-white text-blue-950'
+                          }`}
+                        />
+                        <span className="text-[10px] text-slate-500">د.أ</span>
                       </div>
                     </td>
 

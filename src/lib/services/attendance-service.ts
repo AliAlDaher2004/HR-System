@@ -312,13 +312,18 @@ export async function markPresent(
 
   let result;
   if (existing) {
+    // If the shift scheduled start time changed, recalculate clockOut and workedMinutes accordingly
+    const shiftChanged = existing.scheduledIn !== schedStart;
+    const finalClockOut = shiftChanged ? clockOutDate : (existing.clockOut || clockOutDate);
+    const finalWorkedMinutes = shiftChanged ? workedMinutes : (existing.workedMinutes > 0 ? existing.workedMinutes : workedMinutes);
+
     const [updated] = await db.update(schema.attendance)
       .set({
         scheduledIn: schedStart,
         clockIn: clockInDate,
-        clockOut: existing.clockOut || clockOutDate,
+        clockOut: finalClockOut,
         breakMinutes: breakMins,
-        workedMinutes: existing.workedMinutes > 0 ? existing.workedMinutes : workedMinutes,
+        workedMinutes: finalWorkedMinutes,
         lateMinutes,
         attendanceType: 'PRESENT',
         unpaidDays: '0.00',

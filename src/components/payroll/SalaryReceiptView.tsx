@@ -58,6 +58,11 @@ export function SalaryReceiptView({ payslip }: { payslip: PayslipData }) {
       {/* 2. Document Title */}
       <div className="text-center my-4">
         <h2 className="text-lg font-bold text-slate-900">سند استلام راتب</h2>
+        {payslip.status === 'DRAFT' && (
+          <span className="inline-block mt-1 text-[11px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded no-print">
+            ⚠️ مسودة كشف راتب (غير معتمد بعد)
+          </span>
+        )}
       </div>
 
       {/* 3. Metadata Table Grid */}

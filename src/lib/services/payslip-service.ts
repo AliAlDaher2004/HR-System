@@ -79,8 +79,8 @@ export async function getPayslipData(actor: UserSession, payrollId: string): Pro
   .where(eq(schema.payroll.id, payrollId));
 
   if (!record) throw new Error('كشف الراتب غير موجود');
-  if (record.status !== 'APPROVED' && record.status !== 'PAID') {
-    throw new Error('لا يمكن إصدار قسيمة راتب إلا بعد اعتماد كشف الراتب (APPROVED أو PAID).');
+  if (record.status === 'CANCELLED') {
+    throw new Error('لا يمكن إصدار قسيمة راتب لكشف راتب ملغي.');
   }
 
   const [employee] = await db.select().from(schema.employees).where(eq(schema.employees.id, record.employeeId));
