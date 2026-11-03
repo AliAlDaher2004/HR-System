@@ -127,7 +127,7 @@ export function SalaryReceiptView({ payslip }: { payslip: PayslipData }) {
                   <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.basicEarned)}</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">مكافأة مواصلات</td>
+                  <td className="py-1.5 px-3 text-slate-800">مكافأة مواصلات أيام عمل</td>
                   <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.allowancesEarned)}</td>
                 </tr>
                 <tr>
@@ -143,6 +143,10 @@ export function SalaryReceiptView({ payslip }: { payslip: PayslipData }) {
                   <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.otherAdditions)}</td>
                 </tr>
                 <tr>
+                  <td className="py-1.5 px-3 text-slate-800">ساعات عمل إضافي</td>
+                  <td className="py-1.5 px-3 font-mono text-left">{payslip.otHours && Number(payslip.otHours) > 0 ? payslip.otHours : '-'}</td>
+                </tr>
+                <tr>
                   <td className="py-1.5 px-3 text-slate-800">بدل إضافي</td>
                   <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.otTotal)}</td>
                 </tr>
@@ -150,7 +154,7 @@ export function SalaryReceiptView({ payslip }: { payslip: PayslipData }) {
             </table>
           </div>
           <div className="bg-[#1D4ED8] text-white py-2 px-3 font-bold flex justify-between items-center text-sm border-t border-slate-400">
-            <span>اجمالي الإضافات</span>
+            <span>اجمالي الإضافات (الراتب الإجمالي)</span>
             <span className="font-mono">{parseFloat(payslip.totalEarnings).toFixed(2)}</span>
           </div>
         </div>
@@ -159,7 +163,7 @@ export function SalaryReceiptView({ payslip }: { payslip: PayslipData }) {
         <div className="border border-slate-400 rounded-sm overflow-hidden flex flex-col justify-between">
           <div>
             <div className="bg-[#1D4ED8] text-white py-2 px-3 font-bold text-center text-sm">
-              الاستقطاعات
+              الخصومات
             </div>
             <table className="w-full text-right divide-y divide-slate-200">
               <tbody className="divide-y divide-slate-200">
@@ -180,16 +184,24 @@ export function SalaryReceiptView({ payslip }: { payslip: PayslipData }) {
                   <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.unpaidDeduction)}</td>
                 </tr>
                 <tr>
+                  <td className="py-1.5 px-3 text-slate-800">ساعات مغادرة</td>
+                  <td className="py-1.5 px-3 font-mono text-left">{payslip.earlyDepartureHours && Number(payslip.earlyDepartureHours) > 0 ? payslip.earlyDepartureHours : '-'}</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 px-3 text-slate-800">خصم مغادرة</td>
+                  <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.earlyDepartureDeduction)}</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 px-3 text-slate-800">ساعات التأخير</td>
+                  <td className="py-1.5 px-3 font-mono text-left">{payslip.lateHours && Number(payslip.lateHours) > 0 ? payslip.lateHours : '-'}</td>
+                </tr>
+                <tr>
                   <td className="py-1.5 px-3 text-slate-800">خصم تأخير</td>
                   <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.lateDeduction)}</td>
                 </tr>
                 <tr>
                   <td className="py-1.5 px-3 text-slate-800">خصومات أخرى</td>
                   <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.otherDeductions)}</td>
-                </tr>
-                <tr>
-                  <td className="py-1.5 px-3 text-slate-800">خصم مغادرات</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.earlyDepartureDeduction)}</td>
                 </tr>
               </tbody>
             </table>
@@ -203,9 +215,9 @@ export function SalaryReceiptView({ payslip }: { payslip: PayslipData }) {
 
       {/* 5. Net Payable Block (Aligned with right additions column in RTL) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 text-xs">
-        <div className="bg-[#1D4ED8] text-white py-2.5 px-4 font-bold rounded-sm flex justify-between items-center text-sm">
-          <span>الراتب المستحق</span>
-          <span className="font-mono text-base">{parseFloat(payslip.netPay).toFixed(2)}</span>
+        <div className="bg-[#0A246A] text-white py-2.5 px-4 font-bold rounded-sm flex justify-between items-center text-sm">
+          <span>اجمالي الراتب المستحق (الصافي النهائي)</span>
+          <span className="font-mono text-base font-black">{parseFloat(payslip.netPay).toFixed(2)}</span>
         </div>
         <div />
       </div>

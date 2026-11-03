@@ -38,16 +38,17 @@ export default async function ConsolidatedPayrollPage({
       : (p.allowancesEarned !== undefined && p.allowancesEarned !== null ? Number(p.allowancesEarned) : Math.max(0, 30 - unpaidDays));
 
     const deliveryAllowance = Number(p.deliveryAllowance || 0);
-    const gratuities = Number(p.gratuities || 0) + deliveryAllowance;
+    const gratuities = Number(p.gratuities || 0);
+    const otherAdditions = Number(p.otherAdditions || 0);
     const otHours = Number(p.otHours || 0);
-    const calculatedOtRate = basicEarned > 0 ? ((basicEarned / 26) / 9) * 2 : 0;
+    const calculatedOtRate = basicEarned > 0 ? (basicEarned / 120) : 0;
     const otRate = Number(p.otRate || 0) > 0 ? Number(p.otRate) : calculatedOtRate;
-    const otTotal = p.otTotal !== undefined && Number(p.otTotal) > 0 ? Number(p.otTotal) : Math.round(otHours * otRate * 100) / 100;
-    const grossPay = basicEarned + transportationAllowance + gratuities + otTotal;
+    const otTotal = p.otTotal !== undefined && Number(p.otTotal) > 0 ? Number(p.otTotal) : Math.round(otHours * otRate * 1000) / 1000;
+    const grossPay = basicEarned + transportationAllowance + deliveryAllowance + gratuities + otherAdditions + otTotal;
 
     // Social Security: 7.5% of basic salary ONLY IF registered
     const isSocialSecurity = Boolean(p.socialSecurityRegistered);
-    const socialSecurity = isSocialSecurity ? Math.round(basicEarned * 0.075 * 100) / 100 : 0;
+    const socialSecurity = isSocialSecurity ? Math.round(basicEarned * 0.075 * 1000) / 1000 : 0;
     const loans = Number(p.loanDeduction || 0);
     const unpaidDeduction = Number(p.unpaidDeduction || 0);
     const earlyDepartureMinutes = Number(p.earlyDepartureMinutes || 0);
@@ -67,7 +68,9 @@ export default async function ConsolidatedPayrollPage({
       employeeName: p.employeeName || 'N/A',
       basicEarned,
       transportationAllowance,
+      deliveryAllowance,
       gratuities,
+      otherAdditions,
       otHours,
       otTotal,
       grossPay,

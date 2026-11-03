@@ -417,6 +417,11 @@ export async function createPayrollDraft(
     gratuities?: number;
     otherAdditions?: number;
     otherDeductions?: number;
+    loanDeduction?: number;
+    unpaidDays?: number;
+    earlyDepartureMinutes?: number;
+    lateMinutes?: number;
+    otHours?: number;
     notes?: string;
   }
 ) {
@@ -540,17 +545,19 @@ export async function createPayrollDraft(
 
   const workedDays = attendances.filter((a: any) => a.attendanceType === 'PRESENT').length;
   const workedMinutes = attendances.reduce((acc: number, a: any) => acc + (a.workedMinutes || 0), 0);
-  const lateMinutes = attendances.reduce((acc: number, a: any) => acc + (a.lateMinutes || 0), 0);
-  const earlyDepartureMinutes = attendances.reduce((acc: number, a: any) => acc + (a.earlyDepartureMinutes || 0), 0);
-  const totalOtHours = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.approvedOtHours || '0'), 0);
-  const totalUnpaidDays = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.unpaidDays || '0'), 0);
+  const lateMinutes = data.lateMinutes !== undefined ? data.lateMinutes : attendances.reduce((acc: number, a: any) => acc + (a.lateMinutes || 0), 0);
+  const earlyDepartureMinutes = data.earlyDepartureMinutes !== undefined ? data.earlyDepartureMinutes : attendances.reduce((acc: number, a: any) => acc + (a.earlyDepartureMinutes || 0), 0);
+  const totalOtHours = data.otHours !== undefined ? data.otHours : attendances.reduce((acc: number, a: any) => acc + parseFloat(a.approvedOtHours || '0'), 0);
+  const totalUnpaidDays = data.unpaidDays !== undefined ? data.unpaidDays : attendances.reduce((acc: number, a: any) => acc + parseFloat(a.unpaidDays || '0'), 0);
   const totalDailyDelivery = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.deliveryAllowance || '0'), 0);
   const totalDailyPenalties = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.penaltyAmount || '0'), 0);
 
   const finalDeliveryAllowance = data.deliveryAllowance !== undefined ? data.deliveryAllowance : totalDailyDelivery;
   const finalOtherDeductions = data.otherDeductions !== undefined ? data.otherDeductions : totalDailyPenalties;
 
-  if (isDailyWorker) {
+  if (data.basicEarned !== undefined) {
+    basicEarned = data.basicEarned;
+  } else if (isDailyWorker) {
     basicEarned = workedDays * dailyRate;
     allowancesEarned = 0;
   } else {
@@ -576,12 +583,16 @@ export async function createPayrollDraft(
     }
   }
 
+  if (data.allowancesEarned !== undefined) {
+    allowancesEarned = data.allowancesEarned;
+  }
+
   // Dynamic minute deduction rate: basic / (30 * 8 * 60) = basic / 14400. For daily workers: dailyRate / 480
   let dynamicMinuteRate = 0;
   if (isDailyWorker) {
     dynamicMinuteRate = dailyRate > 0 ? (dailyRate / 480) : 0;
   } else {
-    const fullBasic = activeContract ? parseFloat(activeContract.monthlyBasic) : 0;
+    const fullBasic = basicEarned > 0 ? basicEarned : (activeContract ? parseFloat(activeContract.monthlyBasic) : 0);
     dynamicMinuteRate = fullBasic > 0 ? (fullBasic / 14400) : 0;
   }
 
@@ -591,6 +602,11 @@ export async function createPayrollDraft(
 
   const lateDeduction = Math.round(lateMinutes * minuteDeductionRate * 1000) / 1000;
   const earlyDepartureDeduction = Math.round(earlyDepartureMinutes * minuteDeductionRate * 1000) / 1000;
+
+  if (data.basicEarned !== undefined && !isDailyWorker) {
+    otRate = Math.round((basicEarned / 120) * 1000) / 1000;
+    unpaidDayRate = Math.round((basicEarned / 30) * 1000) / 1000;
+  }
 
   const [inserted] = await db.insert(schema.payroll).values({
     employeeId: data.employeeId,
@@ -623,12 +639,13 @@ export async function createPayrollDraft(
   }).returning();
 
   const autoLoanDeduction = await syncEmployeeLoanRepaymentsForPayroll(db, data.employeeId, inserted.id, periodEnd, actor.id);
+  const finalLoanDeduction = data.loanDeduction !== undefined ? data.loanDeduction : autoLoanDeduction;
 
-  if (autoLoanDeduction > 0) {
+  if (finalLoanDeduction > 0 || data.loanDeduction !== undefined) {
     await db.update(schema.payroll)
-      .set({ loanDeduction: autoLoanDeduction.toFixed(3) })
+      .set({ loanDeduction: finalLoanDeduction.toFixed(3) })
       .where(eq(schema.payroll.id, inserted.id));
-    inserted.loanDeduction = autoLoanDeduction.toFixed(3);
+    inserted.loanDeduction = finalLoanDeduction.toFixed(3);
   }
 
   await logAuditEvent({
@@ -1182,11 +1199,13 @@ export async function updatePayrollDraft(
   actor: UserSession,
   data: {
     payrollId: string;
+    basicEarned?: number;
     allowancesEarned?: number;
     deliveryAllowance?: number;
     gratuities?: number;
     otherAdditions?: number;
     otherDeductions?: number;
+    loanDeduction?: number;
     unpaidDays?: number;
     earlyDepartureMinutes?: number;
     lateMinutes?: number;
@@ -1206,14 +1225,17 @@ export async function updatePayrollDraft(
   const [emp] = await db.select().from(schema.employees).where(eq(schema.employees.id, payrollRecord.employeeId));
   const settings = await getSystemSettings();
 
+  const updatedBasicEarned = data.basicEarned !== undefined ? data.basicEarned : parseFloat(payrollRecord.basicEarned || '0');
+  if (updatedBasicEarned < 0) throw new Error('الراتب الأساسي لا يمكن أن يكون سالباً');
+
   // Dynamic minute deduction rate: basic / (30 * 8 * 60) = basic / 14400. For daily workers: dailyRate / 480
   let dynamicMinuteRate = 0;
   if (emp?.employmentType === 'DAILY_WORKER') {
     const dRate = parseFloat(payrollRecord.dailyRate || '0');
     dynamicMinuteRate = dRate > 0 ? (dRate / 480) : 0;
   } else {
-    let bSalary = parseFloat(payrollRecord.basicEarned || '0');
-    if (payrollRecord.contractId) {
+    let bSalary = updatedBasicEarned;
+    if (payrollRecord.contractId && data.basicEarned === undefined) {
       const [contract] = await db.select().from(schema.contracts).where(eq(schema.contracts.id, payrollRecord.contractId));
       if (contract && parseFloat(contract.monthlyBasic) > 0) {
         bSalary = parseFloat(contract.monthlyBasic);
@@ -1228,12 +1250,12 @@ export async function updatePayrollDraft(
 
   const updatedDeliveryAllowance = data.deliveryAllowance !== undefined ? data.deliveryAllowance : parseFloat(payrollRecord.deliveryAllowance || '0');
   const updatedGratuities = data.gratuities !== undefined ? data.gratuities : parseFloat(payrollRecord.gratuities || '0');
-  const updatedOtherAdditions = data.otherAdditions !== undefined ? data.otherAdditions : parseFloat(payrollRecord.otherAdditions);
-  const updatedOtherDeductions = data.otherDeductions !== undefined ? data.otherDeductions : parseFloat(payrollRecord.otherDeductions);
-  const updatedUnpaidDays = data.unpaidDays !== undefined ? data.unpaidDays : parseFloat(payrollRecord.unpaidDays);
+  const updatedOtherAdditions = data.otherAdditions !== undefined ? data.otherAdditions : parseFloat(payrollRecord.otherAdditions || '0');
+  const updatedOtherDeductions = data.otherDeductions !== undefined ? data.otherDeductions : parseFloat(payrollRecord.otherDeductions || '0');
+  const updatedUnpaidDays = data.unpaidDays !== undefined ? data.unpaidDays : parseFloat(payrollRecord.unpaidDays || '0');
   const updatedEarlyDepartureMinutes = data.earlyDepartureMinutes !== undefined ? data.earlyDepartureMinutes : (payrollRecord.earlyDepartureMinutes || 0);
   const updatedLateMinutes = data.lateMinutes !== undefined ? data.lateMinutes : (payrollRecord.lateMinutes || 0);
-  const updatedOtHours = data.otHours !== undefined ? data.otHours : parseFloat(payrollRecord.otHours);
+  const updatedOtHours = data.otHours !== undefined ? data.otHours : parseFloat(payrollRecord.otHours || '0');
   const updatedNotes = data.notes !== undefined ? data.notes : (payrollRecord.notes || undefined);
 
   if (updatedDeliveryAllowance < 0) throw new Error('بدل التوصيل لا يمكن أن يكون سالباً');
@@ -1271,10 +1293,19 @@ export async function updatePayrollDraft(
 
   if (updatedAllowancesEarned < 0) throw new Error('بدل المواصلات لا يمكن أن يكون سالباً');
 
-  const totalLoanDeduction = await syncEmployeeLoanRepaymentsForPayroll(db, payrollRecord.employeeId, data.payrollId, payrollRecord.periodEnd, actor.id);
+  let otRate = parseFloat(payrollRecord.otRate || '0');
+  let unpaidDayRate = parseFloat(payrollRecord.unpaidDayRate || '0');
+  if (data.basicEarned !== undefined && !isDailyWorker) {
+    otRate = Math.round((updatedBasicEarned / 120) * 1000) / 1000;
+    unpaidDayRate = Math.round((updatedBasicEarned / 30) * 1000) / 1000;
+  }
+
+  const autoLoanDeduction = await syncEmployeeLoanRepaymentsForPayroll(db, payrollRecord.employeeId, data.payrollId, payrollRecord.periodEnd, actor.id);
+  const totalLoanDeduction = data.loanDeduction !== undefined ? data.loanDeduction : autoLoanDeduction;
 
   const [updated] = await db.update(schema.payroll)
     .set({
+      basicEarned: updatedBasicEarned.toFixed(3),
       allowancesEarned: updatedAllowancesEarned.toFixed(3),
       deliveryAllowance: updatedDeliveryAllowance.toFixed(3),
       gratuities: updatedGratuities.toFixed(3),
@@ -1282,11 +1313,13 @@ export async function updatePayrollDraft(
       otherDeductions: updatedOtherDeductions.toFixed(3),
       loanDeduction: totalLoanDeduction.toFixed(3),
       unpaidDays: updatedUnpaidDays.toFixed(2),
+      unpaidDayRate: unpaidDayRate.toFixed(3),
       lateMinutes: updatedLateMinutes,
       lateDeduction: lateDeduction.toFixed(3),
       earlyDepartureMinutes: updatedEarlyDepartureMinutes,
       earlyDepartureDeduction: earlyDepartureDeduction.toFixed(3),
       otHours: updatedOtHours.toFixed(2),
+      otRate: otRate.toFixed(3),
       notes: updatedNotes || null,
       updatedBy: actor.id,
       updatedAt: new Date(),
@@ -1407,8 +1440,10 @@ export interface MonthlyAdjustmentRow {
   otTotal: number;
   unpaidDeduction: number;
   lateMinutes: number;
+  lateHours: number;
   lateDeduction: number;
   earlyDepartureMinutes: number;
+  earlyDepartureHours: number;
   earlyDepartureDeduction: number;
   socialSecurityDeduction: number;
   loanDeduction: number;
@@ -1416,11 +1451,14 @@ export interface MonthlyAdjustmentRow {
   deliveryDetails: Array<{ date: string; amount: number; reason: string }>;
   bonus: number;
   bonusReason: string;
+  otherAdditions: number;
   dailyPenalties: number;
   penaltyDetails: Array<{ date: string; amount: number; reason: string }>;
   otherDeductions: number;
   deductionReason: string;
   notes: string;
+  grossPay: number;
+  totalDeductions: number;
   netPreview: number;
   payrollId: string | null;
   payrollStatus: 'DRAFT' | 'APPROVED' | 'PAID' | 'CANCELLED' | 'NOT_GENERATED';
@@ -1428,14 +1466,25 @@ export interface MonthlyAdjustmentRow {
 
 export interface SaveAdjustmentItem {
   employeeId: string;
+  basicEarned?: number;
   allowancesEarned?: number;
-  deliveryAllowance: number;
-  bonus: number;
+  deliveryAllowance?: number;
+  bonus?: number;
   bonusReason?: string;
-  dailyPenalties: number;
-  otherDeductions: number;
+  otherAdditions?: number;
+  otHours?: number;
+  socialSecurityDeduction?: number;
+  loanDeduction?: number;
+  unpaidDays?: number;
+  earlyDepartureMinutes?: number;
+  earlyDepartureHours?: number;
+  lateMinutes?: number;
+  lateHours?: number;
+  dailyPenalties?: number;
+  otherDeductions?: number;
   deductionReason?: string;
   notes?: string;
+  status?: 'DRAFT' | 'APPROVED';
 }
 
 export async function getMonthlyPayrollAdjustmentSheet(
@@ -1538,10 +1587,10 @@ export async function getMonthlyPayrollAdjustmentSheet(
 
     const workedDays = attendances.filter((a: any) => a.attendanceType === 'PRESENT').length;
     const workedMinutes = attendances.reduce((acc: number, a: any) => acc + (a.workedMinutes || 0), 0);
-    const lateMinutes = attendances.reduce((acc: number, a: any) => acc + (a.lateMinutes || 0), 0);
-    const earlyDepartureMinutes = attendances.reduce((acc: number, a: any) => acc + (a.earlyDepartureMinutes || 0), 0);
-    const otHours = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.approvedOtHours || '0'), 0);
-    const unpaidDays = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.unpaidDays || '0'), 0);
+    let lateMinutes = attendances.reduce((acc: number, a: any) => acc + (a.lateMinutes || 0), 0);
+    let earlyDepartureMinutes = attendances.reduce((acc: number, a: any) => acc + (a.earlyDepartureMinutes || 0), 0);
+    let otHours = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.approvedOtHours || '0'), 0);
+    let unpaidDays = attendances.reduce((acc: number, a: any) => acc + parseFloat(a.unpaidDays || '0'), 0);
 
     const deliveryDetails = attendances
       .filter((a: any) => parseFloat(a.deliveryAllowance || '0') > 0)
@@ -1579,27 +1628,6 @@ export async function getMonthlyPayrollAdjustmentSheet(
       }
     }
 
-    const calculatedOtRate = isDailyWorker
-      ? (dailyRate > 0 ? (dailyRate / 4) : 0)
-      : (fullMonthlyBasic > 0 ? (fullMonthlyBasic / 120) : 0);
-    const otRate = (activeContract?.otRate && parseFloat(activeContract.otRate) > 0 && !isLegacyOtRate(parseFloat(activeContract.otRate)))
-      ? parseFloat(activeContract.otRate)
-      : Math.round(calculatedOtRate * 1000) / 1000;
-    const otTotal = Math.round(otHours * otRate * 1000) / 1000;
-
-    const unpaidDayRate = isDailyWorker ? 0 : Math.round((fullMonthlyBasic / 30) * 1000) / 1000;
-    const unpaidDeduction = isDailyWorker ? 0 : Math.round(unpaidDays * unpaidDayRate * 1000) / 1000;
-
-    const minuteDeductionRate = isDailyWorker
-      ? (dailyRate > 0 ? (dailyRate / 480) : 0)
-      : (fullMonthlyBasic > 0 ? (fullMonthlyBasic / 14400) : 0);
-    const lateDeduction = Math.round(lateMinutes * minuteDeductionRate * 1000) / 1000;
-    const earlyDepartureDeduction = Math.round(earlyDepartureMinutes * minuteDeductionRate * 1000) / 1000;
-
-    const socialSecurityDeduction = emp.socialSecurityRegistered
-      ? Math.round(basicEarned * 0.075 * 1000) / 1000
-      : 0;
-
     const draft = payrollMap.get(emp.id);
     const payrollId = draft ? draft.id : null;
     const payrollStatus = draft ? draft.status : 'NOT_GENERATED';
@@ -1607,12 +1635,16 @@ export async function getMonthlyPayrollAdjustmentSheet(
     let deliveryAllowance = dailyDeliveryTotal;
     let bonus = 0;
     let bonusReason = '';
+    let otherAdditions = 0;
     let otherDeductions = 0;
     let deductionReason = '';
     let notes = '';
     let loanDeduction = 0;
 
     if (draft) {
+      if (draft.basicEarned !== undefined && draft.basicEarned !== null) {
+        basicEarned = parseFloat(draft.basicEarned);
+      }
       if (draft.allowancesEarned !== undefined && draft.allowancesEarned !== null) {
         allowancesEarned = parseFloat(draft.allowancesEarned);
       }
@@ -1620,6 +1652,7 @@ export async function getMonthlyPayrollAdjustmentSheet(
         deliveryAllowance = parseFloat(draft.deliveryAllowance);
       }
       bonus = parseFloat(draft.gratuities || '0');
+      otherAdditions = parseFloat(draft.otherAdditions || '0');
       const draftOtherDeductions = parseFloat(draft.otherDeductions || '0');
       if (draftOtherDeductions >= dailyPenaltyTotal) {
         otherDeductions = Math.round((draftOtherDeductions - dailyPenaltyTotal) * 1000) / 1000;
@@ -1628,7 +1661,40 @@ export async function getMonthlyPayrollAdjustmentSheet(
       }
       notes = draft.notes || '';
       loanDeduction = parseFloat(draft.loanDeduction || '0');
+      if (draft.otHours !== undefined && draft.otHours !== null) {
+        otHours = parseFloat(draft.otHours);
+      }
+      if (draft.unpaidDays !== undefined && draft.unpaidDays !== null) {
+        unpaidDays = parseFloat(draft.unpaidDays);
+      }
+      if (draft.lateMinutes !== undefined && draft.lateMinutes !== null) {
+        lateMinutes = draft.lateMinutes;
+      }
+      if (draft.earlyDepartureMinutes !== undefined && draft.earlyDepartureMinutes !== null) {
+        earlyDepartureMinutes = draft.earlyDepartureMinutes;
+      }
     }
+
+    const calculatedOtRate = isDailyWorker
+      ? (dailyRate > 0 ? (dailyRate / 4) : 0)
+      : (basicEarned > 0 ? (basicEarned / 120) : 0);
+    const otRate = (activeContract?.otRate && parseFloat(activeContract.otRate) > 0 && !isLegacyOtRate(parseFloat(activeContract.otRate)))
+      ? parseFloat(activeContract.otRate)
+      : Math.round(calculatedOtRate * 1000) / 1000;
+    const otTotal = Math.round(otHours * otRate * 1000) / 1000;
+
+    const unpaidDayRate = isDailyWorker ? 0 : Math.round((basicEarned / 30) * 1000) / 1000;
+    const unpaidDeduction = isDailyWorker ? 0 : Math.round(unpaidDays * unpaidDayRate * 1000) / 1000;
+
+    const minuteDeductionRate = isDailyWorker
+      ? (dailyRate > 0 ? (dailyRate / 480) : 0)
+      : (basicEarned > 0 ? (basicEarned / 14400) : 0);
+    const lateDeduction = Math.round(lateMinutes * minuteDeductionRate * 1000) / 1000;
+    const earlyDepartureDeduction = Math.round(earlyDepartureMinutes * minuteDeductionRate * 1000) / 1000;
+
+    const socialSecurityDeduction = emp.socialSecurityRegistered
+      ? Math.round(basicEarned * 0.075 * 1000) / 1000
+      : 0;
 
     const calc = computeNetPayroll({
       employmentType: emp.employmentType,
@@ -1640,7 +1706,7 @@ export async function getMonthlyPayrollAdjustmentSheet(
       gratuities: bonus,
       otHours,
       otRate,
-      otherAdditions: 0,
+      otherAdditions,
       unpaidDays,
       unpaidDayRate,
       socialSecurityRegistered: emp.socialSecurityRegistered,
@@ -1651,6 +1717,9 @@ export async function getMonthlyPayrollAdjustmentSheet(
       otherDeductions: Math.round((dailyPenaltyTotal + otherDeductions) * 1000) / 1000,
       loanDeduction,
     });
+
+    const lateHours = Math.round((lateMinutes / 60) * 100) / 100;
+    const earlyDepartureHours = Math.round((earlyDepartureMinutes / 60) * 100) / 100;
 
     rows.push({
       employeeId: emp.id,
@@ -1669,8 +1738,10 @@ export async function getMonthlyPayrollAdjustmentSheet(
       otTotal,
       unpaidDeduction,
       lateMinutes,
+      lateHours,
       lateDeduction,
       earlyDepartureMinutes,
+      earlyDepartureHours,
       earlyDepartureDeduction,
       socialSecurityDeduction,
       loanDeduction,
@@ -1678,11 +1749,14 @@ export async function getMonthlyPayrollAdjustmentSheet(
       deliveryDetails,
       bonus,
       bonusReason,
+      otherAdditions,
       dailyPenalties: dailyPenaltyTotal,
       penaltyDetails,
       otherDeductions,
       deductionReason,
       notes,
+      grossPay: calc.grossPay,
+      totalDeductions: calc.totalDeductions,
       netPreview: calc.netPreview,
       payrollId,
       payrollStatus,
@@ -1715,6 +1789,8 @@ export async function saveMonthlyPayrollAdjustments(
 ): Promise<{
   success: boolean;
   savedCount: number;
+  approvedCount: number;
+  errors?: string[];
   month: string;
 }> {
   requireRole(actor, ['ADMIN', 'ACCOUNTANT']);
@@ -1726,17 +1802,33 @@ export async function saveMonthlyPayrollAdjustments(
   const periodStart = `${month}-01`;
 
   let savedCount = 0;
+  let approvedCount = 0;
+  const errors: string[] = [];
 
   for (const item of adjustments) {
-    const delivery = Number(item.deliveryAllowance) || 0;
-    const bonus = Number(item.bonus) || 0;
+    const basicEarned = item.basicEarned !== undefined ? Number(item.basicEarned) : undefined;
+    const allowancesEarned = item.allowancesEarned !== undefined ? Number(item.allowancesEarned) : undefined;
+    const delivery = item.deliveryAllowance !== undefined ? Number(item.deliveryAllowance) : 0;
+    const bonus = item.bonus !== undefined ? Number(item.bonus) : 0;
+    const otherAdditions = item.otherAdditions !== undefined ? Number(item.otherAdditions) : 0;
+    const otHours = item.otHours !== undefined ? Number(item.otHours) : undefined;
+    const unpaidDays = item.unpaidDays !== undefined ? Number(item.unpaidDays) : undefined;
+    const earlyDepartureMinutes = item.earlyDepartureMinutes !== undefined
+      ? Number(item.earlyDepartureMinutes)
+      : (item.earlyDepartureHours !== undefined ? Math.round(Number(item.earlyDepartureHours) * 60) : undefined);
+    const lateMinutes = item.lateMinutes !== undefined
+      ? Number(item.lateMinutes)
+      : (item.lateHours !== undefined ? Math.round(Number(item.lateHours) * 60) : undefined);
+    const loanDeduction = item.loanDeduction !== undefined ? Number(item.loanDeduction) : undefined;
     const dailyPenalties = Number(item.dailyPenalties) || 0;
     const otherDeductions = Number(item.otherDeductions) || 0;
     const totalOtherDeductions = Math.round((dailyPenalties + otherDeductions) * 1000) / 1000;
-    const allowancesEarned = item.allowancesEarned !== undefined ? Number(item.allowancesEarned) : undefined;
 
     // Build consolidated notes
     const noteParts: string[] = [];
+    if (basicEarned !== undefined) {
+      noteParts.push(`راتب أساسي: ${basicEarned.toFixed(3)} د.أ`);
+    }
     if (allowancesEarned !== undefined) {
       noteParts.push(`بدل مواصلات: ${allowancesEarned.toFixed(3)} د.أ`);
     }
@@ -1745,6 +1837,9 @@ export async function saveMonthlyPayrollAdjustments(
     }
     if (bonus > 0) {
       noteParts.push(`مكافأة: ${bonus.toFixed(3)} د.أ${item.bonusReason ? ` (${item.bonusReason})` : ''}`);
+    }
+    if (otherAdditions > 0) {
+      noteParts.push(`إضافات أخرى: ${otherAdditions.toFixed(3)} د.أ`);
     }
     if (dailyPenalties > 0) {
       noteParts.push(`مخالفات حضور: ${dailyPenalties.toFixed(3)} د.أ`);
@@ -1766,6 +1861,8 @@ export async function saveMonthlyPayrollAdjustments(
       )
     );
 
+    let targetPayrollId: string | null = null;
+
     if (existing) {
       if (existing.status !== 'DRAFT') {
         // Skip updating locked/paid/approved payrolls to preserve approved state
@@ -1773,25 +1870,50 @@ export async function saveMonthlyPayrollAdjustments(
       }
       await updatePayrollDraft(actor, {
         payrollId: existing.id,
+        basicEarned,
         allowancesEarned,
         deliveryAllowance: delivery,
         gratuities: bonus,
+        otherAdditions,
+        otHours,
+        unpaidDays,
+        earlyDepartureMinutes,
+        lateMinutes,
+        loanDeduction,
         otherDeductions: totalOtherDeductions,
         notes: combinedNotes,
       });
+      targetPayrollId = existing.id;
       savedCount++;
     } else {
-      await createPayrollDraft(actor, {
+      const created = await createPayrollDraft(actor, {
         employeeId: item.employeeId,
         year,
         month: monthNum,
+        basicEarned,
         allowancesEarned,
         deliveryAllowance: delivery,
         gratuities: bonus,
+        otherAdditions,
+        otHours,
+        unpaidDays,
+        earlyDepartureMinutes,
+        lateMinutes,
+        loanDeduction,
         otherDeductions: totalOtherDeductions,
         notes: combinedNotes,
       });
+      targetPayrollId = created.id;
       savedCount++;
+    }
+
+    if (item.status === 'APPROVED' && targetPayrollId) {
+      try {
+        await approvePayroll(actor, targetPayrollId);
+        approvedCount++;
+      } catch (err: any) {
+        errors.push(`موظف #${item.employeeId}: ${err.message}`);
+      }
     }
   }
 
@@ -1803,13 +1925,17 @@ export async function saveMonthlyPayrollAdjustments(
     metadata: {
       month,
       savedCount,
+      approvedCount,
       totalRequested: adjustments.length,
+      errorsCount: errors.length,
     },
   });
 
   return {
     success: true,
     savedCount,
+    approvedCount,
+    errors: errors.length > 0 ? errors : undefined,
     month,
   };
 }

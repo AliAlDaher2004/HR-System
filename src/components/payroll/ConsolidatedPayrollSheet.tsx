@@ -9,7 +9,9 @@ export interface ConsolidatedPayrollRow {
   employeeName: string;
   basicEarned: number;
   transportationAllowance: number;
+  deliveryAllowance: number;
   gratuities: number;
+  otherAdditions: number;
   otHours: number;
   otTotal: number;
   grossPay: number;
@@ -40,7 +42,9 @@ export function ConsolidatedPayrollSheet({
     (acc, row) => ({
       basicEarned: acc.basicEarned + row.basicEarned,
       transportationAllowance: acc.transportationAllowance + row.transportationAllowance,
+      deliveryAllowance: acc.deliveryAllowance + row.deliveryAllowance,
       gratuities: acc.gratuities + row.gratuities,
+      otherAdditions: acc.otherAdditions + row.otherAdditions,
       otHours: acc.otHours + row.otHours,
       otTotal: acc.otTotal + row.otTotal,
       grossPay: acc.grossPay + row.grossPay,
@@ -59,7 +63,9 @@ export function ConsolidatedPayrollSheet({
     {
       basicEarned: 0,
       transportationAllowance: 0,
+      deliveryAllowance: 0,
       gratuities: 0,
+      otherAdditions: 0,
       otHours: 0,
       otTotal: 0,
       grossPay: 0,
@@ -93,7 +99,7 @@ export function ConsolidatedPayrollSheet({
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;
-            font-size: 8pt !important;
+            font-size: 7.5pt !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
@@ -119,7 +125,7 @@ export function ConsolidatedPayrollSheet({
             width: 100% !important;
             table-layout: fixed !important;
             border-collapse: collapse !important;
-            font-size: 6.8pt !important;
+            font-size: 6.5pt !important;
             line-height: 1.15 !important;
           }
 
@@ -133,12 +139,12 @@ export function ConsolidatedPayrollSheet({
           }
 
           .consolidated-table th {
-            font-size: 7pt !important;
+            font-size: 6.8pt !important;
             font-weight: 700 !important;
           }
 
           .consolidated-table tfoot td {
-            font-size: 7pt !important;
+            font-size: 6.8pt !important;
             font-weight: 800 !important;
           }
 
@@ -171,13 +177,15 @@ export function ConsolidatedPayrollSheet({
             <span className="font-bold text-black">{rows.length}</span>
           </p>
         </div>
-        <button
-          onClick={() => window.print()}
-          className="win-btn font-bold text-xs px-4 py-1.5 flex items-center gap-2 text-[#0A246A]"
-        >
-          <Printer className="w-4 h-4" />
-          <span>طباعة البيان المجمع (PDF)</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => window.print()}
+            className="win-btn font-bold text-xs px-4 py-1.5 flex items-center gap-2 text-[#0A246A]"
+          >
+            <Printer className="w-4 h-4" />
+            <span>طباعة البيان المجمع (PDF)</span>
+          </button>
+        </div>
       </div>
 
       {/* Header Info Section */}
@@ -220,33 +228,35 @@ export function ConsolidatedPayrollSheet({
         <table className="consolidated-table w-full text-center text-[8.5px] md:text-[9.5px] border-collapse table-fixed tracking-tighter">
           <colgroup>
             {[
-              <col key="1" style={{ width: '4.5%' }} />,
-              <col key="2" style={{ width: '11.5%' }} />,
-              <col key="3" style={{ width: '5.5%' }} />,
-              <col key="4" style={{ width: '5.5%' }} />,
-              <col key="5" style={{ width: '4.5%' }} />,
-              <col key="6" style={{ width: '4.0%' }} />,
-              <col key="7" style={{ width: '4.5%' }} />,
-              <col key="8" style={{ width: '6.0%' }} />,
-              <col key="9" style={{ width: '5.0%' }} />,
-              <col key="10" style={{ width: '4.5%' }} />,
-              <col key="11" style={{ width: '4.0%' }} />,
-              <col key="12" style={{ width: '5.0%' }} />,
-              <col key="13" style={{ width: '4.0%' }} />,
-              <col key="14" style={{ width: '5.0%' }} />,
-              <col key="15" style={{ width: '4.0%' }} />,
-              <col key="16" style={{ width: '5.0%' }} />,
-              <col key="17" style={{ width: '4.5%' }} />,
-              <col key="18" style={{ width: '6.0%' }} />,
-              <col key="19" style={{ width: '6.5%' }} />,
+              <col key="1" style={{ width: '4.5%' }} />, // الرقم الوظيفي
+              <col key="2" style={{ width: '11.0%' }} />, // الاسم
+              <col key="3" style={{ width: '5.5%' }} />, // الراتب الأساسي
+              <col key="4" style={{ width: '5.0%' }} />, // مكافأة مواصلات
+              <col key="5" style={{ width: '4.5%' }} />, // بدل توصيل
+              <col key="6" style={{ width: '4.5%' }} />, // اكراميات
+              <col key="7" style={{ width: '4.5%' }} />, // اضافات اخرى
+              <col key="8" style={{ width: '4.0%' }} />, // ساعات عمل إضافي
+              <col key="9" style={{ width: '4.5%' }} />, // بدل إضافي
+              <col key="10" style={{ width: '5.5%' }} />, // اجمالي الراتب (gross)
+              <col key="11" style={{ width: '4.5%' }} />, // ضمان اجتماعي
+              <col key="12" style={{ width: '4.0%' }} />, // السلف
+              <col key="13" style={{ width: '3.5%' }} />, // عدد أيام الغياب
+              <col key="14" style={{ width: '4.5%' }} />, // خصم الغياب
+              <col key="15" style={{ width: '3.5%' }} />, // ساعات مغادرة
+              <col key="16" style={{ width: '4.5%' }} />, // خصم مغادرة
+              <col key="17" style={{ width: '3.5%' }} />, // ساعات التأخير
+              <col key="18" style={{ width: '4.5%' }} />, // خصم تأخير
+              <col key="19" style={{ width: '4.5%' }} />, // خصومات أخرى
+              <col key="20" style={{ width: '5.5%' }} />, // اجمالي الخصومات
+              <col key="21" style={{ width: '6.5%' }} />, // صافي الراتب
             ]}
           </colgroup>
           <thead>
             {/* Table Group Headers */}
             <tr className="bg-slate-800 text-white font-bold border-b border-slate-400">
-              <th colSpan={3} className="py-1 px-1 border-r border-slate-600">بيانات الموظف</th>
-              <th colSpan={5} className="py-1 px-1 border-r border-slate-600 bg-[#1D4ED8]">الإضافات</th>
-              <th colSpan={10} className="py-1 px-1 border-r border-slate-600 bg-[#1D4ED8]">الاستقطاعات</th>
+              <th colSpan={2} className="py-1 px-1 border-r border-slate-600">بيانات الموظف</th>
+              <th colSpan={8} className="py-1 px-1 border-r border-slate-600 bg-[#1D4ED8]">الإضافات</th>
+              <th colSpan={10} className="py-1 px-1 border-r border-slate-600 bg-[#1D4ED8]">الخصومات</th>
               <th colSpan={1} className="py-1 px-1 bg-slate-900">الصافي النهائي</th>
             </tr>
             {/* Column Headers */}
@@ -256,7 +266,9 @@ export function ConsolidatedPayrollSheet({
               <th className="py-1 px-1 border-r border-slate-300">الراتب الأساسي</th>
               {/* Earnings */}
               <th className="py-1 px-1 border-r border-slate-300">مكافأة مواصلات أيام عمل</th>
+              <th className="py-1 px-1 border-r border-slate-300">بدل توصيل</th>
               <th className="py-1 px-1 border-r border-slate-300">اكراميات</th>
+              <th className="py-1 px-1 border-r border-slate-300">اضافات اخرى</th>
               <th className="py-1 px-1 border-r border-slate-300">ساعات عمل إضافي</th>
               <th className="py-1 px-1 border-r border-slate-300">بدل إضافي</th>
               <th className="py-1 px-1 border-r border-slate-300 bg-blue-100 font-black text-slate-900">اجمالي الراتب</th>
@@ -282,7 +294,9 @@ export function ConsolidatedPayrollSheet({
                 <td className="py-1 px-1 border-r border-slate-300 text-right font-medium truncate" title={row.employeeName}>{row.employeeName}</td>
                 <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.basicEarned)}</td>
                 <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.transportationAllowance)}</td>
+                <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.deliveryAllowance)}</td>
                 <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.gratuities)}</td>
+                <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.otherAdditions)}</td>
                 <td className="py-1 px-1 border-r border-slate-300 font-mono">{row.otHours > 0 ? row.otHours.toFixed(2) : '-'}</td>
                 <td className="py-1 px-1 border-r border-slate-300 font-mono text-emerald-700">{formatVal(row.otTotal)}</td>
                 <td className="py-1 px-1 border-r border-slate-300 font-mono font-bold bg-blue-50">{formatVal(row.grossPay)}</td>
@@ -306,7 +320,9 @@ export function ConsolidatedPayrollSheet({
               <td colSpan={2} className="py-1.5 px-1 border-r border-slate-700 text-center">الاجمالي</td>
               <td className="py-1.5 px-1 border-r border-slate-700 font-mono">{totals.basicEarned.toFixed(2)}</td>
               <td className="py-1.5 px-1 border-r border-slate-700 font-mono">{totals.transportationAllowance.toFixed(2)}</td>
+              <td className="py-1.5 px-1 border-r border-slate-700 font-mono">{totals.deliveryAllowance.toFixed(2)}</td>
               <td className="py-1.5 px-1 border-r border-slate-700 font-mono">{totals.gratuities.toFixed(2)}</td>
+              <td className="py-1.5 px-1 border-r border-slate-700 font-mono">{totals.otherAdditions.toFixed(2)}</td>
               <td className="py-1.5 px-1 border-r border-slate-700 font-mono">{totals.otHours.toFixed(2)}</td>
               <td className="py-1.5 px-1 border-r border-slate-700 font-mono">{totals.otTotal.toFixed(2)}</td>
               <td className="py-1.5 px-1 border-r border-slate-700 font-mono bg-blue-900 text-white">{totals.grossPay.toFixed(2)}</td>

@@ -30,7 +30,9 @@ export interface PayslipData {
   unpaidDays: string;
   unpaidDayRate: string;
   unpaidDeduction: string;
+  lateHours?: string;
   lateDeduction?: string;
+  earlyDepartureHours?: string;
   earlyDepartureDeduction?: string;
   otherDeductions: string;
   loanDeduction: string;
@@ -63,7 +65,9 @@ export async function getPayslipData(actor: UserSession, payrollId: string): Pro
     otRate: schema.payroll.otRate,
     unpaidDays: schema.payroll.unpaidDays,
     unpaidDayRate: schema.payroll.unpaidDayRate,
+    lateMinutes: schema.payroll.lateMinutes,
     lateDeduction: schema.payroll.lateDeduction,
+    earlyDepartureMinutes: schema.payroll.earlyDepartureMinutes,
     earlyDepartureDeduction: schema.payroll.earlyDepartureDeduction,
     otherAdditions: schema.payroll.otherAdditions,
     otherDeductions: schema.payroll.otherDeductions,
@@ -142,7 +146,9 @@ export async function getPayslipData(actor: UserSession, payrollId: string): Pro
     unpaidDays: calc.unpaidDays.toFixed(2),
     unpaidDayRate: calc.unpaidDayRate.toFixed(3),
     unpaidDeduction: calc.unpaidDeduction.toFixed(3),
+    lateHours: record.lateMinutes ? (record.lateMinutes / 60).toFixed(2) : '0.00',
     lateDeduction: calc.lateDeduction.toFixed(3),
+    earlyDepartureHours: record.earlyDepartureMinutes ? (record.earlyDepartureMinutes / 60).toFixed(2) : '0.00',
     earlyDepartureDeduction: calc.earlyDepartureDeduction.toFixed(3),
     otherDeductions: calc.otherDeductions.toFixed(3),
     loanDeduction: calc.loanDeduction.toFixed(3),
@@ -291,7 +297,9 @@ export async function getBatchPayslipData(
       unpaidDays: unpaidDays.toFixed(2),
       unpaidDayRate: unpaidDayRate.toFixed(3),
       unpaidDeduction: unpaidDeduction.toFixed(3),
+      lateHours: record.lateMinutes ? (record.lateMinutes / 60).toFixed(2) : '0.00',
       lateDeduction: lateDeduction.toFixed(3),
+      earlyDepartureHours: record.earlyDepartureMinutes ? (record.earlyDepartureMinutes / 60).toFixed(2) : '0.00',
       earlyDepartureDeduction: earlyDepartureDeduction.toFixed(3),
       otherDeductions: otherDeductions.toFixed(3),
       loanDeduction: loanDeduction.toFixed(3),

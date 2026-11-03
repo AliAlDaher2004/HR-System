@@ -256,4 +256,70 @@ describe('Daily Penalties, Delivery Allowances, and Monthly Payroll Adjustments'
     expect(parseFloat(payslip.totalDeductions)).toBe(10);
     expect(parseFloat(payslip.netPay)).toBe(475);
   });
+
+  it('5. should support full 21-column payroll adjustments: basic, overtime, other additions, early departure, late deductions, loans', async () => {
+    // Save comprehensive 21-column adjustments matching user Excel sheet:
+    // basic: 290.00
+    // transport: 30.00
+    // delivery: 3.00
+    // gratuities (bonus): 15.00
+    // otherAdditions: 10.00
+    // otHours: 15.00 (at basic 290, otRate = 290/120 = 2.41666 -> otTotal = 36.25)
+    // loan: 20.00
+    // earlyDepartureHours: 2.00 (rate = 290/240 = 1.20833 -> 2.42 deduction)
+    // lateHours: 1.00 (rate = 290/240 = 1.20833 -> 1.21 deduction)
+    // unpaidDays: 0
+    // otherDeductions: 5.00
+    const res = await saveMonthlyPayrollAdjustments(adminUser, testMonth, [
+      {
+        employeeId: testEmpId,
+        basicEarned: 290,
+        allowancesEarned: 30,
+        deliveryAllowance: 3,
+        bonus: 15,
+        otherAdditions: 10,
+        otHours: 15,
+        loanDeduction: 20,
+        earlyDepartureHours: 2,
+        lateHours: 1,
+        dailyPenalties: 0,
+        otherDeductions: 5,
+        notes: 'تعديل شامل لبيان الرواتب',
+      },
+    ]);
+    expect(res.success).toBe(true);
+
+    const db = getDb();
+    const [draft] = await db.select().from(schema.payroll).where(
+      eq(schema.payroll.employeeId, testEmpId)
+    );
+    expect(draft).toBeDefined();
+    expect(parseFloat(draft.basicEarned)).toBe(290);
+    expect(parseFloat(draft.allowancesEarned)).toBe(30);
+    expect(parseFloat(draft.deliveryAllowance || '0')).toBe(3);
+    expect(parseFloat(draft.gratuities || '0')).toBe(15);
+    expect(parseFloat(draft.otherAdditions || '0')).toBe(10);
+    expect(parseFloat(draft.otHours || '0')).toBe(15);
+    expect(parseFloat(draft.loanDeduction || '0')).toBe(20);
+    expect(draft.earlyDepartureMinutes).toBe(120); // 2 hours * 60
+    expect(draft.lateMinutes).toBe(60); // 1 hour * 60
+    expect(parseFloat(draft.otherDeductions || '0')).toBe(5);
+
+    // Verify individual payslip (بيان الراتب) reflects all 21 items
+    const payslip = await getPayslipData(adminUser, draft.id);
+    expect(payslip).toBeDefined();
+    expect(parseFloat(payslip.basicEarned)).toBe(290);
+    expect(parseFloat(payslip.allowancesEarned)).toBe(30);
+    expect(parseFloat(payslip.deliveryAllowance)).toBe(3);
+    expect(parseFloat(payslip.tipsGratuities)).toBe(15);
+    expect(parseFloat(payslip.otherAdditions)).toBe(10);
+    expect(parseFloat(payslip.otHours)).toBe(15);
+    expect(parseFloat(payslip.otTotal)).toBeCloseTo(36.25, 1);
+    expect(parseFloat(payslip.loanDeduction)).toBe(20);
+    expect(parseFloat(payslip.earlyDepartureHours || '0')).toBe(2);
+    expect(parseFloat(payslip.lateHours || '0')).toBe(1);
+
+    // Check gross: 290 + 30 + 3 + 15 + 10 + otTotal
+    expect(parseFloat(payslip.totalEarnings)).toBeCloseTo(384.25, 1);
+  });
 });
