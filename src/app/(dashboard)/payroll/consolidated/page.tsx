@@ -12,7 +12,7 @@ import { SaveMonthlyStatementModal } from '@/components/payroll/SaveMonthlyState
 export default async function ConsolidatedPayrollPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; type?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
@@ -66,6 +66,8 @@ export default async function ConsolidatedPayrollPage({
       id: p.id,
       employeeNo: p.employeeNo || 'N/A',
       employeeName: p.employeeName || 'N/A',
+      employmentType: (p.employmentType || 'PERMANENT') as 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER',
+      department: p.department || '',
       basicEarned,
       transportationAllowance,
       deliveryAllowance,
@@ -96,7 +98,8 @@ export default async function ConsolidatedPayrollPage({
     const month = formData.get('month') as string;
     if (!month) throw new Error('الشهر المستهدف مفقود');
 
-    const res = await approveBulkPayrollForMonth(currentUser, month);
+    const empType = (formData.get('employmentType') as any) || undefined;
+    const res = await approveBulkPayrollForMonth(currentUser, month, empType !== 'ALL' ? empType : undefined);
     revalidatePath('/payroll');
     revalidatePath('/payroll/consolidated');
     return res;
@@ -128,7 +131,11 @@ export default async function ConsolidatedPayrollPage({
       </div>
 
       <div className="w-full max-w-[1400px] print:max-w-full print:w-full">
-        <ConsolidatedPayrollSheet periodMonth={currentMonth} rows={rows} />
+        <ConsolidatedPayrollSheet
+          periodMonth={currentMonth}
+          rows={rows}
+          initialType={(resolvedParams.type as any) || 'ALL'}
+        />
       </div>
     </div>
   );

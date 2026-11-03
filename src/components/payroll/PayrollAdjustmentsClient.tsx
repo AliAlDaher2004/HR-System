@@ -11,6 +11,7 @@ interface PayrollAdjustmentsClientProps {
   periodStart: string;
   periodEnd: string;
   initialRows: MonthlyAdjustmentRow[];
+  initialType?: 'ALL' | 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER';
   saveAction: (
     month: string,
     adjustments: SaveAdjustmentItem[]
@@ -47,6 +48,7 @@ export function PayrollAdjustmentsClient({
   periodStart,
   periodEnd,
   initialRows,
+  initialType = 'ALL',
   saveAction,
 }: PayrollAdjustmentsClientProps) {
   const router = useRouter();
@@ -62,7 +64,7 @@ export function PayrollAdjustmentsClient({
   // Search & Filters state
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDept, setSelectedDept] = useState<string>('ALL');
-  const [selectedType, setSelectedType] = useState<string>('ALL');
+  const [selectedType, setSelectedType] = useState<string>(initialType);
   const [onlyWithAdjustments, setOnlyWithAdjustments] = useState<boolean>(false);
 
   // Success alert state
@@ -104,10 +106,43 @@ export function PayrollAdjustmentsClient({
     return Array.from(set).sort();
   }, [initialRows]);
 
-  // Handle month navigation
+  // Employee counts per employment type
+  const { allCount, permanentCount, probationaryCount, dailyCount } = useMemo(() => {
+    let perm = 0;
+    let prob = 0;
+    let daily = 0;
+    initialRows.forEach((r) => {
+      if (r.employmentType === 'PERMANENT') perm++;
+      else if (r.employmentType === 'PROBATIONARY') prob++;
+      else if (r.employmentType === 'DAILY_WORKER') daily++;
+    });
+    return {
+      allCount: initialRows.length,
+      permanentCount: perm,
+      probationaryCount: prob,
+      dailyCount: daily,
+    };
+  }, [initialRows]);
+
+  // Dynamic sheet name based on active filter
+  const sheetName = useMemo(() => {
+    switch (selectedType) {
+      case 'PERMANENT':
+        return 'كشف رواتب المثبتين';
+      case 'PROBATIONARY':
+        return 'كشف رواتب التجريبيين';
+      case 'DAILY_WORKER':
+        return 'كشف رواتب عمال المياومة';
+      default:
+        return 'كافة الموظفين';
+    }
+  }, [selectedType]);
+
+  // Handle month navigation (preserving active tab type)
   const handleMonthChange = (newMonth: string) => {
     if (!newMonth) return;
-    router.push(`/payroll/adjustments?month=${newMonth}`);
+    const typeParam = selectedType !== 'ALL' ? `&type=${selectedType}` : '';
+    router.push(`/payroll/adjustments?month=${newMonth}${typeParam}`);
   };
 
   const handlePrevMonth = () => {
@@ -322,9 +357,9 @@ export function PayrollAdjustmentsClient({
     });
   }, [calculatedRows, searchTerm, selectedDept, selectedType, onlyWithAdjustments]);
 
-  // Grand totals across all active employees
-  const grandTotals = useMemo(() => {
-    return calculatedRows.reduce(
+  // Totals computed across currently displayed/filtered rows
+  const displayedTotals = useMemo(() => {
+    return filteredRows.reduce(
       (acc, r) => ({
         count: acc.count + 1,
         basicEarned: acc.basicEarned + r.basicEarned,
@@ -370,14 +405,30 @@ export function PayrollAdjustmentsClient({
         netPay: 0,
       }
     );
-  }, [calculatedRows]);
+  }, [filteredRows]);
 
-  // Save handler (either draft or approved)
-  const handleSave = (targetStatus: 'DRAFT' | 'APPROVED') => {
+  // Save handler (either draft or approved, scoped to current sheet or all)
+  const handleSave = (
+    targetStatus: 'DRAFT' | 'APPROVED',
+    scope: 'CURRENT_SHEET' | 'ALL' = 'CURRENT_SHEET'
+  ) => {
     setSaveErrorMsg(null);
     setSaveSuccessMsg(null);
 
-    const payload: SaveAdjustmentItem[] = initialRows.map((r) => {
+    const rowsToProcess =
+      scope === 'CURRENT_SHEET' && selectedType !== 'ALL'
+        ? filteredRows
+        : calculatedRows;
+
+    if (rowsToProcess.length === 0) {
+      setSaveErrorMsg('لا يوجد موظفون لحفظ بياناتهم في الكشف المختار.');
+      return;
+    }
+
+    const targetLabel =
+      scope === 'CURRENT_SHEET' && selectedType !== 'ALL' ? sheetName : 'كافة الموظفين';
+
+    const payload: SaveAdjustmentItem[] = rowsToProcess.map((r) => {
       const edit = rowEdits[r.employeeId] || {
         basicEarned: r.basicEarned,
         allowancesEarned: r.allowancesEarned,
@@ -425,11 +476,11 @@ export function PayrollAdjustmentsClient({
         if (res.success) {
           if (targetStatus === 'APPROVED') {
             setSaveSuccessMsg(
-              `تم حفظ وترحيل واعتماد مسيرات الرواتب لشهر (${month}) بنجاح! تم حفظ (${res.savedCount}) مسير واعتماد (${res.approvedCount || 0}) كشف راتب نهائي.`
+              `تم حفظ وترحيل واعتماد (${targetLabel}) لشهر (${month}) بنجاح! تم حفظ (${res.savedCount}) مسير واعتماد (${res.approvedCount || 0}) كشف راتب نهائي.`
             );
           } else {
             setSaveSuccessMsg(
-              `تم حفظ وترحيل مسيرات الرواتب كمسودات (DRAFT) لشهر (${month}) بنجاح لـ (${res.savedCount}) موظف.`
+              `تم حفظ وترحيل مسيرات (${targetLabel}) كمسودات (DRAFT) لشهر (${month}) بنجاح لـ (${res.savedCount}) موظف.`
             );
           }
 
@@ -500,11 +551,11 @@ export function PayrollAdjustmentsClient({
         {/* Quick Nav Links */}
         <div className="flex items-center gap-1.5">
           <Link
-            href={`/payroll/consolidated?month=${month}`}
+            href={`/payroll/consolidated?month=${month}${selectedType !== 'ALL' ? `&type=${selectedType}` : ''}`}
             className="win-btn text-xs font-bold px-3 py-1 bg-white hover:bg-blue-50 text-blue-900 flex items-center gap-1 border border-blue-300"
           >
             <span>📊</span>
-            <span>عرض بيان الرواتب المجمع</span>
+            <span>عرض بيان الرواتب المجمع ({sheetName})</span>
           </Link>
           <Link
             href="/payroll"
@@ -546,6 +597,101 @@ export function PayrollAdjustmentsClient({
         </div>
       )}
 
+      {/* 2.5. Dedicated Sheet Filter Tabs (Permanent vs Probationary vs Daily) */}
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-[#ECE9D8] win-raised p-2 border border-[#7F9DB9]">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setSelectedType('ALL')}
+            className={`win-btn text-xs font-bold px-3 py-1.5 flex items-center gap-1.5 transition-colors ${
+              selectedType === 'ALL'
+                ? 'bg-[#0A246A] text-white border-2 border-[#0A246A] shadow'
+                : 'bg-white text-slate-800 hover:bg-slate-100'
+            }`}
+          >
+            <span>📋 كافة الموظفين</span>
+            <span
+              className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                selectedType === 'ALL' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-800'
+              }`}
+            >
+              {allCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedType('PERMANENT')}
+            className={`win-btn text-xs font-bold px-3 py-1.5 flex items-center gap-1.5 transition-colors ${
+              selectedType === 'PERMANENT'
+                ? 'bg-[#1D4ED8] text-white border-2 border-[#1D4ED8] shadow'
+                : 'bg-white text-blue-900 hover:bg-blue-50 border border-blue-200'
+            }`}
+          >
+            <span>💼 كشف رواتب المثبتين</span>
+            <span
+              className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                selectedType === 'PERMANENT' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-900'
+              }`}
+            >
+              {permanentCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedType('PROBATIONARY')}
+            className={`win-btn text-xs font-bold px-3 py-1.5 flex items-center gap-1.5 transition-colors ${
+              selectedType === 'PROBATIONARY'
+                ? 'bg-amber-600 text-white border-2 border-amber-700 shadow'
+                : 'bg-white text-amber-900 hover:bg-amber-50 border border-amber-200'
+            }`}
+          >
+            <span>⏳ كشف رواتب التجريبيين</span>
+            <span
+              className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                selectedType === 'PROBATIONARY' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-900'
+              }`}
+            >
+              {probationaryCount}
+            </span>
+          </button>
+
+          {dailyCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelectedType('DAILY_WORKER')}
+              className={`win-btn text-xs font-bold px-3 py-1.5 flex items-center gap-1.5 transition-colors ${
+                selectedType === 'DAILY_WORKER'
+                  ? 'bg-teal-700 text-white border-2 border-teal-800 shadow'
+                  : 'bg-white text-teal-900 hover:bg-teal-50 border border-teal-200'
+              }`}
+            >
+              <span>⚡ كشف عمال المياومة</span>
+              <span
+                className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  selectedType === 'DAILY_WORKER' ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-900'
+                }`}
+              >
+                {dailyCount}
+              </span>
+            </button>
+          )}
+        </div>
+
+        {/* Current Active Sheet Info */}
+        <div className="flex items-center gap-2.5 text-xs bg-white px-3 py-1 border border-slate-300 rounded font-medium">
+          <span className="text-slate-500">الكشف النشط:</span>
+          <span className="font-bold text-[#0A246A]">{sheetName}</span>
+          <span className="text-slate-300">|</span>
+          <span className="text-slate-500">العدد:</span>
+          <span className="font-mono font-bold text-slate-900">{filteredRows.length} موظف</span>
+          <span className="text-slate-300">|</span>
+          <span className="text-slate-500">إجمالي الصافي:</span>
+          <span className="font-mono font-black text-emerald-700">{displayedTotals.netPay.toFixed(2)} د.أ</span>
+        </div>
+      </div>
+
       {/* 3. Filter Toolbar & Dual Action Buttons */}
       <div className="win-raised p-2 bg-[#F5F3E9] flex flex-wrap items-center justify-between gap-2 border border-[#7F9DB9]">
         <div className="flex flex-wrap items-center gap-2">
@@ -578,21 +724,6 @@ export function PayrollAdjustmentsClient({
             </select>
           </div>
 
-          {/* Type Filter */}
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-slate-700 font-bold">التعيين:</span>
-            <select
-              value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value)}
-              className="win-input text-xs px-1.5 py-1"
-            >
-              <option value="ALL">الكل</option>
-              <option value="PERMANENT">مثبت</option>
-              <option value="PROBATIONARY">تحت التجربة</option>
-              <option value="DAILY_WORKER">مياومة</option>
-            </select>
-          </div>
-
           {/* Toggle only with adjustments */}
           <label className="flex items-center gap-1 text-xs text-slate-800 font-bold cursor-pointer bg-white px-2 py-1 border border-slate-300">
             <input
@@ -606,24 +737,44 @@ export function PayrollAdjustmentsClient({
         </div>
 
         {/* Dual Save & Transfer & Approve Action Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
-            onClick={() => handleSave('DRAFT')}
+            onClick={() => handleSave('DRAFT', 'CURRENT_SHEET')}
             disabled={isPending}
             className="win-btn font-bold text-xs px-3 py-1.5 bg-[#ECE9D8] text-slate-900 hover:bg-slate-200 border border-slate-400 flex items-center gap-1"
-            title="حفظ التعديلات كمسودات تمهيداً للمراجعة"
+            title={`حفظ تعديلات ${sheetName} كمسودات`}
           >
-            <span>{isPending ? '⏳ جاري الحفظ...' : '💾 حفظ وترحيل (مسودة DRAFT)'}</span>
+            <span>
+              {isPending
+                ? '⏳ جاري الحفظ...'
+                : `💾 حفظ وترحيل (${selectedType === 'ALL' ? 'الكل' : sheetName} - ${filteredRows.length})`}
+            </span>
           </Button>
 
           <Button
-            onClick={() => handleSave('APPROVED')}
+            onClick={() => handleSave('APPROVED', 'CURRENT_SHEET')}
             disabled={isPending}
             className="win-btn font-black text-xs px-4 py-1.5 bg-[#008080] text-white hover:bg-[#006666] flex items-center gap-1.5 shadow"
-            title="حفظ وترحيل واعتماد المسيرات رسمياً وتجميد الصافي المستحق"
+            title={`حفظ وترحيل واعتماد ${sheetName} رسمياً`}
           >
-            <span>{isPending ? '⏳ جاري الترحيل والاعتماد...' : '✅ حفظ وترحيل واعتماد (APPROVED)'}</span>
+            <span>
+              {isPending
+                ? '⏳ جاري الترحيل والاعتماد...'
+                : `✅ حفظ وترحيل واعتماد (${selectedType === 'ALL' ? 'الكل' : sheetName})`}
+            </span>
           </Button>
+
+          {selectedType !== 'ALL' && (
+            <button
+              type="button"
+              onClick={() => handleSave('APPROVED', 'ALL')}
+              disabled={isPending}
+              className="win-btn text-[11px] font-bold px-2 py-1 bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
+              title="اعتماد مسيرات كافة الموظفين لجميع الفئات"
+            >
+              🌐 اعتماد الكل ({allCount})
+            </button>
+          )}
         </div>
       </div>
 
@@ -1115,28 +1266,28 @@ export function PayrollAdjustmentsClient({
           {/* 5. Totals Footer Row */}
           <tfoot className="sticky bottom-0 z-10 bg-slate-900 text-white font-black text-[11px] border-t-2 border-slate-900 shadow-md">
             <tr>
-              <td colSpan={3} className="p-1.5 text-center border-l border-slate-700">
-                المجموع الكلي ({grandTotals.count} موظف)
+              <td colSpan={3} className="p-1.5 text-center border-l border-slate-700 bg-slate-950 font-bold">
+                المجموع ({sheetName} - {displayedTotals.count} موظف)
               </td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700">{grandTotals.basicEarned.toFixed(2)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700">{grandTotals.allowancesEarned.toFixed(2)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(grandTotals.deliveryAllowance)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(grandTotals.bonus)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(grandTotals.otherAdditions)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(grandTotals.otHours)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700 text-emerald-400">{formatCell(grandTotals.otTotal)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700 bg-blue-900 text-white">{grandTotals.grossEarnings.toFixed(2)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(grandTotals.socialSecurity)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(grandTotals.loans)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(grandTotals.unpaidDays)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700 text-rose-300">{formatCell(grandTotals.unpaidDeduction)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(grandTotals.earlyDepartureHours)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700 text-rose-300">{formatCell(grandTotals.earlyDepartureDeduction)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(grandTotals.lateHours)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700 text-rose-300">{formatCell(grandTotals.lateDeduction)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(grandTotals.otherDeductions)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700 bg-rose-950 text-white">{grandTotals.totalDeductions.toFixed(2)}</td>
-              <td className="p-1.5 text-center font-mono border-l border-slate-700 bg-emerald-950 text-emerald-300 text-xs font-black">{grandTotals.netPay.toFixed(2)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700">{displayedTotals.basicEarned.toFixed(2)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700">{displayedTotals.allowancesEarned.toFixed(2)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(displayedTotals.deliveryAllowance)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(displayedTotals.bonus)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(displayedTotals.otherAdditions)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(displayedTotals.otHours)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700 text-emerald-400">{formatCell(displayedTotals.otTotal)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700 bg-blue-900 text-white">{displayedTotals.grossEarnings.toFixed(2)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(displayedTotals.socialSecurity)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(displayedTotals.loans)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(displayedTotals.unpaidDays)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700 text-rose-300">{formatCell(displayedTotals.unpaidDeduction)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(displayedTotals.earlyDepartureHours)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700 text-rose-300">{formatCell(displayedTotals.earlyDepartureDeduction)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(displayedTotals.lateHours)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700 text-rose-300">{formatCell(displayedTotals.lateDeduction)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700">{formatCell(displayedTotals.otherDeductions)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700 bg-rose-950 text-white">{displayedTotals.totalDeductions.toFixed(2)}</td>
+              <td className="p-1.5 text-center font-mono border-l border-slate-700 bg-emerald-950 text-emerald-300 text-xs font-black">{displayedTotals.netPay.toFixed(2)}</td>
               <td colSpan={2} className="p-1.5 text-center text-[10px] text-slate-400 font-normal">
                 مطابق 100%
               </td>
@@ -1154,22 +1305,42 @@ export function PayrollAdjustmentsClient({
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
-            onClick={() => handleSave('DRAFT')}
+            onClick={() => handleSave('DRAFT', 'CURRENT_SHEET')}
             disabled={isPending}
             className="win-btn font-bold text-xs px-3 py-1.5 bg-[#ECE9D8] text-slate-900 hover:bg-slate-200 border border-slate-400"
           >
-            <span>💾 حفظ وترحيل (مسودة)</span>
+            <span>
+              {isPending
+                ? '⏳ جاري الحفظ...'
+                : `💾 حفظ وترحيل (${selectedType === 'ALL' ? 'الكل' : sheetName})`}
+            </span>
           </Button>
 
           <Button
-            onClick={() => handleSave('APPROVED')}
+            onClick={() => handleSave('APPROVED', 'CURRENT_SHEET')}
             disabled={isPending}
             className="win-btn font-black text-xs px-4 py-1.5 bg-[#008080] text-white hover:bg-[#006666] flex items-center gap-1.5 shadow"
           >
-            <span>✅ حفظ وترحيل واعتماد المسيرات (نهائي)</span>
+            <span>
+              {isPending
+                ? '⏳ جاري الترحيل والاعتماد...'
+                : `✅ حفظ وترحيل واعتماد (${selectedType === 'ALL' ? 'الكل' : sheetName})`}
+            </span>
           </Button>
+
+          {selectedType !== 'ALL' && (
+            <button
+              type="button"
+              onClick={() => handleSave('APPROVED', 'ALL')}
+              disabled={isPending}
+              className="win-btn text-[11px] font-bold px-2 py-1 bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
+              title="اعتماد كافة الموظفين لجميع الفئات"
+            >
+              🌐 اعتماد الكل ({allCount})
+            </button>
+          )}
         </div>
       </div>
 

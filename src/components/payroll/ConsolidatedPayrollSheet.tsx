@@ -1,12 +1,14 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { Printer } from 'lucide-react';
 
 export interface ConsolidatedPayrollRow {
   id: string;
   employeeNo: string;
   employeeName: string;
+  employmentType: 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER';
+  department?: string;
   basicEarned: number;
   transportationAllowance: number;
   deliveryAllowance: number;
@@ -31,57 +33,91 @@ export interface ConsolidatedPayrollRow {
 export function ConsolidatedPayrollSheet({
   periodMonth,
   rows,
+  initialType = 'ALL',
 }: {
   periodMonth: string;
   rows: ConsolidatedPayrollRow[];
+  initialType?: 'ALL' | 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER';
 }) {
+  const [selectedType, setSelectedType] = useState<'ALL' | 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER'>(
+    initialType
+  );
+
+  // Group counts
+  const allCount = rows.length;
+  const permanentCount = rows.filter((r) => r.employmentType === 'PERMANENT').length;
+  const probationaryCount = rows.filter((r) => r.employmentType === 'PROBATIONARY').length;
+  const dailyCount = rows.filter((r) => r.employmentType === 'DAILY_WORKER').length;
+
+  // Filtered rows for the selected sheet
+  const displayedRows = useMemo(() => {
+    if (selectedType === 'ALL') return rows;
+    return rows.filter((r) => r.employmentType === selectedType);
+  }, [rows, selectedType]);
+
+  // Dynamic sheet title
+  const sheetTitle = useMemo(() => {
+    switch (selectedType) {
+      case 'PERMANENT':
+        return 'بيان رواتب الموظفين المثبتين';
+      case 'PROBATIONARY':
+        return 'بيان رواتب الموظفين تحت التجربة (التجريبيين)';
+      case 'DAILY_WORKER':
+        return 'بيان رواتب عمال المياومة';
+      default:
+        return 'بيان رواتب (كافة الموظفين)';
+    }
+  }, [selectedType]);
+
   const formatVal = (val: number) => (val > 0 ? val.toFixed(2) : '-');
 
-  // Compute column totals
-  const totals = rows.reduce(
-    (acc, row) => ({
-      basicEarned: acc.basicEarned + row.basicEarned,
-      transportationAllowance: acc.transportationAllowance + row.transportationAllowance,
-      deliveryAllowance: acc.deliveryAllowance + row.deliveryAllowance,
-      gratuities: acc.gratuities + row.gratuities,
-      otherAdditions: acc.otherAdditions + row.otherAdditions,
-      otHours: acc.otHours + row.otHours,
-      otTotal: acc.otTotal + row.otTotal,
-      grossPay: acc.grossPay + row.grossPay,
-      socialSecurity: acc.socialSecurity + row.socialSecurity,
-      loans: acc.loans + row.loans,
-      unpaidDays: acc.unpaidDays + row.unpaidDays,
-      unpaidDeduction: acc.unpaidDeduction + row.unpaidDeduction,
-      earlyDepartureHours: acc.earlyDepartureHours + row.earlyDepartureHours,
-      earlyDepartureDeduction: acc.earlyDepartureDeduction + row.earlyDepartureDeduction,
-      lateHours: acc.lateHours + row.lateHours,
-      lateDeduction: acc.lateDeduction + row.lateDeduction,
-      otherDeductions: acc.otherDeductions + row.otherDeductions,
-      totalDeductions: acc.totalDeductions + row.totalDeductions,
-      netPay: acc.netPay + row.netPay,
-    }),
-    {
-      basicEarned: 0,
-      transportationAllowance: 0,
-      deliveryAllowance: 0,
-      gratuities: 0,
-      otherAdditions: 0,
-      otHours: 0,
-      otTotal: 0,
-      grossPay: 0,
-      socialSecurity: 0,
-      loans: 0,
-      unpaidDays: 0,
-      unpaidDeduction: 0,
-      earlyDepartureHours: 0,
-      earlyDepartureDeduction: 0,
-      lateHours: 0,
-      lateDeduction: 0,
-      otherDeductions: 0,
-      totalDeductions: 0,
-      netPay: 0,
-    }
-  );
+  // Compute column totals for the displayed sheet
+  const totals = useMemo(() => {
+    return displayedRows.reduce(
+      (acc, row) => ({
+        basicEarned: acc.basicEarned + row.basicEarned,
+        transportationAllowance: acc.transportationAllowance + row.transportationAllowance,
+        deliveryAllowance: acc.deliveryAllowance + row.deliveryAllowance,
+        gratuities: acc.gratuities + row.gratuities,
+        otherAdditions: acc.otherAdditions + row.otherAdditions,
+        otHours: acc.otHours + row.otHours,
+        otTotal: acc.otTotal + row.otTotal,
+        grossPay: acc.grossPay + row.grossPay,
+        socialSecurity: acc.socialSecurity + row.socialSecurity,
+        loans: acc.loans + row.loans,
+        unpaidDays: acc.unpaidDays + row.unpaidDays,
+        unpaidDeduction: acc.unpaidDeduction + row.unpaidDeduction,
+        earlyDepartureHours: acc.earlyDepartureHours + row.earlyDepartureHours,
+        earlyDepartureDeduction: acc.earlyDepartureDeduction + row.earlyDepartureDeduction,
+        lateHours: acc.lateHours + row.lateHours,
+        lateDeduction: acc.lateDeduction + row.lateDeduction,
+        otherDeductions: acc.otherDeductions + row.otherDeductions,
+        totalDeductions: acc.totalDeductions + row.totalDeductions,
+        netPay: acc.netPay + row.netPay,
+      }),
+      {
+        basicEarned: 0,
+        transportationAllowance: 0,
+        deliveryAllowance: 0,
+        gratuities: 0,
+        otherAdditions: 0,
+        otHours: 0,
+        otTotal: 0,
+        grossPay: 0,
+        socialSecurity: 0,
+        loans: 0,
+        unpaidDays: 0,
+        unpaidDeduction: 0,
+        earlyDepartureHours: 0,
+        earlyDepartureDeduction: 0,
+        lateHours: 0,
+        lateDeduction: 0,
+        otherDeductions: 0,
+        totalDeductions: 0,
+        netPay: 0,
+      }
+    );
+  }, [displayedRows]);
 
   return (
     <div className="consolidated-sheet-container w-full bg-white text-slate-900 p-4 md:p-6 select-none font-sans" dir="rtl">
@@ -165,39 +201,116 @@ export function ConsolidatedPayrollSheet({
         }
       `}</style>
 
-      {/* Top Action Bar (hidden when printing) */}
-      <div className="flex justify-between items-center bg-[#ECE9D8] win-raised p-3 mb-4 no-print">
-        <div>
-          <h2 className="text-sm font-bold text-black flex items-center gap-1.5">
-            <span>📊</span>
-            <span>بيان الرواتب المجمع (Consolidated Payroll Sheet)</span>
-          </h2>
-          <p className="text-[#505050] text-xs mt-0.5">
-            فترة الكشف: <span className="font-bold text-black">{periodMonth}</span> | عدد الموظفين:{' '}
-            <span className="font-bold text-black">{rows.length}</span>
-          </p>
+      {/* Top Action Bar with Tabs & Print (hidden when printing) */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-[#ECE9D8] win-raised p-3 mb-4 gap-3 no-print">
+        {/* Filter Tabs to Separate Sheets */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setSelectedType('ALL')}
+            className={`win-btn text-xs font-bold px-3 py-1.5 flex items-center gap-1.5 ${
+              selectedType === 'ALL'
+                ? 'bg-[#0A246A] text-white border-2 border-[#0A246A] shadow'
+                : 'bg-white text-slate-800 hover:bg-slate-100'
+            }`}
+          >
+            <span>📋 الكل</span>
+            <span className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+              selectedType === 'ALL' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-800'
+            }`}>
+              {allCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedType('PERMANENT')}
+            className={`win-btn text-xs font-bold px-3 py-1.5 flex items-center gap-1.5 ${
+              selectedType === 'PERMANENT'
+                ? 'bg-[#1D4ED8] text-white border-2 border-[#1D4ED8] shadow'
+                : 'bg-white text-blue-900 hover:bg-blue-50 border border-blue-200'
+            }`}
+          >
+            <span>💼 كشف رواتب المثبتين</span>
+            <span className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+              selectedType === 'PERMANENT' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-900'
+            }`}>
+              {permanentCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedType('PROBATIONARY')}
+            className={`win-btn text-xs font-bold px-3 py-1.5 flex items-center gap-1.5 ${
+              selectedType === 'PROBATIONARY'
+                ? 'bg-amber-600 text-white border-2 border-amber-700 shadow'
+                : 'bg-white text-amber-900 hover:bg-amber-50 border border-amber-200'
+            }`}
+          >
+            <span>⏳ كشف رواتب التجريبيين</span>
+            <span className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+              selectedType === 'PROBATIONARY' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-900'
+            }`}>
+              {probationaryCount}
+            </span>
+          </button>
+
+          {dailyCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelectedType('DAILY_WORKER')}
+              className={`win-btn text-xs font-bold px-3 py-1.5 flex items-center gap-1.5 ${
+                selectedType === 'DAILY_WORKER'
+                  ? 'bg-purple-700 text-white border-2 border-purple-800 shadow'
+                  : 'bg-white text-purple-900 hover:bg-purple-50'
+              }`}
+            >
+              <span>⚡ كشف المياومة</span>
+              <span className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                selectedType === 'DAILY_WORKER' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-900'
+              }`}>
+                {dailyCount}
+              </span>
+            </button>
+          )}
         </div>
+
+        {/* Print Button */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => window.print()}
-            className="win-btn font-bold text-xs px-4 py-1.5 flex items-center gap-2 text-[#0A246A]"
+            className="win-btn font-black text-xs px-4 py-1.5 flex items-center gap-2 bg-[#008080] text-white hover:bg-[#006666] shadow"
           >
             <Printer className="w-4 h-4" />
-            <span>طباعة البيان المجمع (PDF)</span>
+            <span>طباعة {sheetTitle} (PDF)</span>
           </button>
         </div>
       </div>
 
-      {/* Header Info Section */}
-      <div className="company-header-info border-b-2 border-slate-900 pb-4 mb-4">
+      {/* Header Info Section (Always displayed on Screen and on Printed Sheet) */}
+      <div className="company-header-info border-b-2 border-slate-900 pb-3 mb-3">
         <div className="flex justify-between items-start">
-          {/* Right: Company Title */}
+          {/* Right: Company Title & Dynamic Sheet Header */}
           <div>
-            <h1 className="text-base md:text-lg font-bold text-slate-900">شركة الخطوط الأذكى لصناعة المنظفات</h1>
-            <h2 className="text-lg md:text-xl font-black text-slate-900 my-0.5">بيان رواتب</h2>
+            <h1 className="text-sm md:text-base font-bold text-slate-800">شركة الخطوط الأذكى لصناعة المنظفات</h1>
+            <h2 className="text-base md:text-xl font-black text-slate-900 my-0.5 flex items-center gap-2">
+              <span>{sheetTitle}</span>
+              {selectedType === 'PERMANENT' && (
+                <span className="text-[11px] font-bold text-blue-900 bg-blue-100 px-2 py-0.5 rounded border border-blue-300">
+                  الموظفون المثبتون
+                </span>
+              )}
+              {selectedType === 'PROBATIONARY' && (
+                <span className="text-[11px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                  الموظفون تحت التجربة
+                </span>
+              )}
+            </h2>
             <div className="text-xs text-slate-700 font-medium">
               الفترة من: <span className="font-mono">{periodMonth}-01</span> الى:{' '}
-              <span className="font-mono">{periodMonth}-31</span>
+              <span className="font-mono">{periodMonth}-31</span> | عدد الموظفين:{' '}
+              <span className="font-mono font-bold text-black">{displayedRows.length}</span> موظف
             </div>
           </div>
 
@@ -288,36 +401,48 @@ export function ConsolidatedPayrollSheet({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-300">
-            {rows.map((row) => (
-              <tr key={row.id} className="hover:bg-slate-50">
-                <td className="py-1 px-1 border-r border-slate-300 font-mono font-bold">{row.employeeNo}</td>
-                <td className="py-1 px-1 border-r border-slate-300 text-right font-medium truncate" title={row.employeeName}>{row.employeeName}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.basicEarned)}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.transportationAllowance)}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.deliveryAllowance)}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.gratuities)}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.otherAdditions)}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono">{row.otHours > 0 ? row.otHours.toFixed(2) : '-'}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono text-emerald-700">{formatVal(row.otTotal)}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono font-bold bg-blue-50">{formatVal(row.grossPay)}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.socialSecurity)}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.loans)}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono">{row.unpaidDays > 0 ? row.unpaidDays : '-'}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono text-rose-700">{formatVal(row.unpaidDeduction)}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono">{row.earlyDepartureHours > 0 ? row.earlyDepartureHours.toFixed(2) : '-'}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono text-rose-700">{formatVal(row.earlyDepartureDeduction)}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono">{row.lateHours > 0 ? row.lateHours.toFixed(2) : '-'}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono text-rose-700">{formatVal(row.lateDeduction)}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.otherDeductions)}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono font-bold bg-amber-50 text-rose-800">{formatVal(row.totalDeductions)}</td>
-                <td className="py-1 px-1 border-r border-slate-300 font-mono font-black text-slate-900 bg-slate-100">{formatVal(row.netPay)}</td>
+            {displayedRows.length === 0 ? (
+              <tr>
+                <td colSpan={21} className="py-8 text-center text-slate-500 font-bold">
+                  لا يوجد كشوف رواتب في تصنيف ({sheetTitle}) لهذا الشهر.
+                </td>
               </tr>
-            ))}
+            ) : (
+              displayedRows.map((row) => (
+                <tr key={row.id} className="hover:bg-slate-50">
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono font-bold">{row.employeeNo}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 text-right font-medium truncate" title={row.employeeName}>
+                    {row.employeeName}
+                  </td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.basicEarned)}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.transportationAllowance)}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.deliveryAllowance)}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.gratuities)}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.otherAdditions)}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono">{row.otHours > 0 ? row.otHours.toFixed(2) : '-'}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono text-emerald-700">{formatVal(row.otTotal)}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono font-bold bg-blue-50">{formatVal(row.grossPay)}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.socialSecurity)}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.loans)}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono">{row.unpaidDays > 0 ? row.unpaidDays : '-'}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono text-rose-700">{formatVal(row.unpaidDeduction)}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono">{row.earlyDepartureHours > 0 ? row.earlyDepartureHours.toFixed(2) : '-'}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono text-rose-700">{formatVal(row.earlyDepartureDeduction)}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono">{row.lateHours > 0 ? row.lateHours.toFixed(2) : '-'}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono text-rose-700">{formatVal(row.lateDeduction)}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono">{formatVal(row.otherDeductions)}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono font-bold bg-amber-50 text-rose-800">{formatVal(row.totalDeductions)}</td>
+                  <td className="py-1 px-1 border-r border-slate-300 font-mono font-black text-slate-900 bg-slate-100">{formatVal(row.netPay)}</td>
+                </tr>
+              ))
+            )}
           </tbody>
           <tfoot>
-            {/* Totals Summary Row */}
+            {/* Totals Summary Row for the Filtered Sheet */}
             <tr className="bg-slate-900 text-white font-black text-xs border-t-2 border-slate-900">
-              <td colSpan={2} className="py-1.5 px-1 border-r border-slate-700 text-center">الاجمالي</td>
+              <td colSpan={2} className="py-1.5 px-1 border-r border-slate-700 text-center">
+                إجمالي {sheetTitle} ({displayedRows.length} موظف)
+              </td>
               <td className="py-1.5 px-1 border-r border-slate-700 font-mono">{totals.basicEarned.toFixed(2)}</td>
               <td className="py-1.5 px-1 border-r border-slate-700 font-mono">{totals.transportationAllowance.toFixed(2)}</td>
               <td className="py-1.5 px-1 border-r border-slate-700 font-mono">{totals.deliveryAllowance.toFixed(2)}</td>

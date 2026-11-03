@@ -13,7 +13,7 @@ import { revalidatePath } from 'next/cache';
 export default async function PayrollAdjustmentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; type?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
@@ -24,6 +24,7 @@ export default async function PayrollAdjustmentsPage({
 
   const resolvedParams = await searchParams;
   const currentMonth = resolvedParams.month || new Date().toISOString().slice(0, 7);
+  const initialType = resolvedParams.type || 'ALL';
 
   const sheetData = await getMonthlyPayrollAdjustmentSheet(user, currentMonth);
 
@@ -50,6 +51,7 @@ export default async function PayrollAdjustmentsPage({
       periodEnd={sheetData.periodEnd}
       initialRows={sheetData.rows}
       saveAction={handleSaveAdjustments}
+      initialType={initialType as any}
     />
   );
 }

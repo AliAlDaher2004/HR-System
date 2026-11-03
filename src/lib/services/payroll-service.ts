@@ -155,6 +155,7 @@ export async function getPayrolls(
     month?: string; // YYYY-MM
     employeeId?: string;
     status?: 'DRAFT' | 'APPROVED' | 'PAID' | 'CANCELLED';
+    employmentType?: string;
   }
 ) {
   assertCanViewFinancials(actor);
@@ -205,6 +206,9 @@ export async function getPayrolls(
   const conditions = [];
   if (filters?.employeeId) conditions.push(eq(schema.payroll.employeeId, filters.employeeId));
   if (filters?.status) conditions.push(eq(schema.payroll.status, filters.status));
+  if (filters?.employmentType && filters.employmentType !== 'ALL') {
+    conditions.push(eq(schema.employees.employmentType, filters.employmentType as any));
+  }
   if (filters?.month) {
     const start = `${filters.month}-01`;
     conditions.push(eq(schema.payroll.periodStart, start));
@@ -1383,18 +1387,35 @@ export async function deletePayrollRun(
 
 export async function approveBulkPayrollForMonth(
   actor: UserSession,
-  month: string
+  month: string,
+  employmentType?: 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER'
 ): Promise<{ approvedCount: number; errors: string[] }> {
   assertCanApprovePayroll(actor);
   const db = getDb();
   const start = `${month}-01`;
 
-  const drafts = await db.select().from(schema.payroll).where(
-    and(
-      eq(schema.payroll.periodStart, start),
-      eq(schema.payroll.status, 'DRAFT')
-    )
-  );
+  let drafts: any[] = [];
+  if (employmentType) {
+    const results = await db
+      .select({ payroll: schema.payroll })
+      .from(schema.payroll)
+      .innerJoin(schema.employees, eq(schema.payroll.employeeId, schema.employees.id))
+      .where(
+        and(
+          eq(schema.payroll.periodStart, start),
+          eq(schema.payroll.status, 'DRAFT'),
+          eq(schema.employees.employmentType, employmentType)
+        )
+      );
+    drafts = results.map((r: any) => r.payroll);
+  } else {
+    drafts = await db.select().from(schema.payroll).where(
+      and(
+        eq(schema.payroll.periodStart, start),
+        eq(schema.payroll.status, 'DRAFT')
+      )
+    );
+  }
 
   let approvedCount = 0;
   const errors: string[] = [];
