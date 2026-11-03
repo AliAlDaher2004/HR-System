@@ -45,6 +45,9 @@ export function getDb() {
         ALTER TABLE attendance ADD COLUMN IF NOT EXISTS delivery_allowance NUMERIC(12, 3) NOT NULL DEFAULT 0;
         ALTER TABLE attendance ADD COLUMN IF NOT EXISTS delivery_reason TEXT;
         ALTER TABLE payroll ADD COLUMN IF NOT EXISTS delivery_allowance NUMERIC(12, 3) NOT NULL DEFAULT 0;
+        ALTER TABLE loans ADD COLUMN IF NOT EXISTS installment_months INTEGER NOT NULL DEFAULT 1;
+        ALTER TABLE loans ADD COLUMN IF NOT EXISTS monthly_installment NUMERIC(12, 3);
+        ALTER TABLE loans ADD COLUMN IF NOT EXISTS start_month VARCHAR(7);
       `).catch(() => {});
     }
     globalForDb.dbInstance = drizzlePglite(globalForDb.pgliteInstance, { schema });

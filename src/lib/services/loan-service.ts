@@ -20,6 +20,9 @@ export async function getLoans(actor: UserSession, employeeId?: string) {
     date: schema.loans.date,
     amount: schema.loans.amount,
     currency: schema.loans.currency,
+    installmentMonths: schema.loans.installmentMonths,
+    monthlyInstallment: schema.loans.monthlyInstallment,
+    startMonth: schema.loans.startMonth,
     status: schema.loans.status,
     notes: schema.loans.notes,
     createdAt: schema.loans.createdAt,
@@ -40,6 +43,11 @@ export async function getLoans(actor: UserSession, employeeId?: string) {
         paidTotal: calculation.paidTotal.toFixed(3),
         remaining: calculation.remaining.toFixed(3),
         isDebt: loan.status === 'DISBURSED',
+        installmentMonths: loan.installmentMonths || 1,
+        monthlyInstallment: loan.monthlyInstallment
+          ? parseFloat(loan.monthlyInstallment).toFixed(3)
+          : (parseFloat(loan.amount) / (loan.installmentMonths || 1)).toFixed(3),
+        startMonth: loan.startMonth || loan.date.slice(0, 7),
       };
     })
   );
@@ -103,6 +111,16 @@ export async function calculateLoanBalance(loanId: string): Promise<{
   };
 }
 
+export interface BulkLoanItem {
+  employeeId: string;
+  amount: number;
+  date?: string;
+  installmentMonths?: number;
+  monthlyInstallment?: number;
+  startMonth?: string;
+  notes?: string;
+}
+
 export async function createLoan(
   actor: UserSession,
   data: {
@@ -110,7 +128,11 @@ export async function createLoan(
     date: string;
     amount: number;
     currency?: string;
+    installmentMonths?: number;
+    monthlyInstallment?: number;
+    startMonth?: string;
     notes?: string;
+    disburseImmediately?: boolean;
   }
 ) {
   requireRole(actor, ['ADMIN', 'ACCOUNTANT']);
@@ -128,26 +150,157 @@ export async function createLoan(
     throw new Error(`عملة السلفة (${currency}) يجب أن تطابق عملة النظام التشغيلية (${operatingCurrency}).`);
   }
 
+  const installmentMonths = data.installmentMonths && data.installmentMonths > 0 ? data.installmentMonths : 1;
+  const monthlyInstallment = data.monthlyInstallment && data.monthlyInstallment > 0
+    ? data.monthlyInstallment
+    : (installmentMonths > 1 ? Math.round((data.amount / installmentMonths) * 1000) / 1000 : data.amount);
+  const startMonth = data.startMonth || data.date.slice(0, 7);
+  const status = data.disburseImmediately ? 'DISBURSED' : 'PROPOSED';
+
   const [inserted] = await db.insert(schema.loans).values({
     employeeId: data.employeeId,
     date: data.date,
     amount: data.amount.toFixed(3),
     currency,
-    status: 'PROPOSED', // Proposed loans do not count as debt
+    installmentMonths,
+    monthlyInstallment: monthlyInstallment.toFixed(3),
+    startMonth,
+    status,
     notes: data.notes || null,
     createdBy: actor.id,
   }).returning();
+
+  if (status === 'DISBURSED') {
+    // Find any active DRAFT payrolls for this employee and sync loan repayments
+    const draftPayrolls = await db.select().from(schema.payroll).where(
+      and(
+        eq(schema.payroll.employeeId, data.employeeId),
+        eq(schema.payroll.status, 'DRAFT')
+      )
+    );
+
+    for (const draft of draftPayrolls) {
+      const totalLoanDed = await syncEmployeeLoanRepaymentsForPayroll(db, data.employeeId, draft.id, draft.periodEnd, actor.id);
+      await db.update(schema.payroll)
+        .set({ loanDeduction: totalLoanDed.toFixed(3) })
+        .where(eq(schema.payroll.id, draft.id));
+    }
+  }
 
   await logAuditEvent({
     actor,
     tableName: 'loans',
     recordId: inserted.id,
-    action: 'CREATE_LOAN',
-    newStatus: 'PROPOSED',
-    metadata: { employeeId: data.employeeId, amount: data.amount },
+    action: status === 'DISBURSED' ? 'CREATE_AND_DISBURSE_LOAN' : 'CREATE_LOAN',
+    newStatus: status,
+    metadata: {
+      employeeId: data.employeeId,
+      amount: data.amount,
+      installmentMonths,
+      monthlyInstallment,
+      startMonth,
+    },
   });
 
   return inserted;
+}
+
+export async function saveBulkLoans(
+  actor: UserSession,
+  data: {
+    date: string;
+    startMonth?: string;
+    disburseImmediately?: boolean;
+    items: BulkLoanItem[];
+  }
+): Promise<{
+  success: boolean;
+  createdCount: number;
+  totalAmount: number;
+  errors: string[];
+}> {
+  requireRole(actor, ['ADMIN', 'ACCOUNTANT']);
+  const db = getDb();
+
+  const currentSettings = await getSystemSettings();
+  const operatingCurrency = currentSettings?.currency || 'JOD';
+
+  let createdCount = 0;
+  let totalAmount = 0;
+  const errors: string[] = [];
+
+  const disburse = data.disburseImmediately !== false; // Default to true
+
+  for (const item of data.items) {
+    const amount = Number(item.amount) || 0;
+    if (amount <= 0) continue;
+
+    try {
+      const loanDate = item.date || data.date;
+      const installmentMonths = item.installmentMonths && item.installmentMonths > 0 ? item.installmentMonths : 1;
+      const monthlyInstallment = item.monthlyInstallment && item.monthlyInstallment > 0
+        ? Number(item.monthlyInstallment)
+        : (installmentMonths > 1 ? Math.round((amount / installmentMonths) * 1000) / 1000 : amount);
+      const startMonth = item.startMonth || data.startMonth || loanDate.slice(0, 7);
+
+      const [inserted] = await db.insert(schema.loans).values({
+        employeeId: item.employeeId,
+        date: loanDate,
+        amount: amount.toFixed(3),
+        currency: operatingCurrency,
+        installmentMonths,
+        monthlyInstallment: monthlyInstallment.toFixed(3),
+        startMonth,
+        status: disburse ? 'DISBURSED' : 'PROPOSED',
+        notes: item.notes?.trim() || null,
+        createdBy: actor.id,
+      }).returning();
+
+      if (disburse) {
+        // Find any active DRAFT payrolls for this employee and sync loan repayments
+        const draftPayrolls = await db.select().from(schema.payroll).where(
+          and(
+            eq(schema.payroll.employeeId, item.employeeId),
+            eq(schema.payroll.status, 'DRAFT')
+          )
+        );
+
+        for (const draft of draftPayrolls) {
+          const totalLoanDed = await syncEmployeeLoanRepaymentsForPayroll(db, item.employeeId, draft.id, draft.periodEnd, actor.id);
+          await db.update(schema.payroll)
+            .set({ loanDeduction: totalLoanDed.toFixed(3) })
+            .where(eq(schema.payroll.id, draft.id));
+        }
+      }
+
+      await logAuditEvent({
+        actor,
+        tableName: 'loans',
+        recordId: inserted.id,
+        action: disburse ? 'CREATE_AND_DISBURSE_BULK_LOAN' : 'CREATE_BULK_LOAN',
+        newStatus: inserted.status,
+        metadata: {
+          employeeId: item.employeeId,
+          amount,
+          installmentMonths,
+          monthlyInstallment,
+          startMonth,
+        },
+      });
+
+      createdCount++;
+      totalAmount = Math.round((totalAmount + amount) * 1000) / 1000;
+    } catch (err: any) {
+      errors.push(`موظف #${item.employeeId}: ${err.message}`);
+    }
+  }
+
+  return {
+    success: createdCount > 0 || errors.length === 0,
+    createdCount,
+    totalAmount,
+    errors,
+  };
 }
 
 export async function disburseLoan(actor: UserSession, loanId: string) {

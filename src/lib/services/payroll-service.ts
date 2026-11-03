@@ -355,9 +355,16 @@ export async function syncEmployeeLoanRepaymentsForPayroll(
   );
 
   let totalLoanDeduction = 0;
+  const targetMonth = periodEnd.slice(0, 7);
 
   for (const loan of activeLoans) {
     const loanAmount = parseFloat(loan.amount);
+    const startMonth = loan.startMonth || (loan.date ? loan.date.slice(0, 7) : targetMonth);
+
+    // If target month is before loan start month, skip deduction for this draft
+    if (targetMonth < startMonth) {
+      continue;
+    }
 
     const existingRepayments = await db.select({
       id: schema.repayments.id,
@@ -388,25 +395,103 @@ export async function syncEmployeeLoanRepaymentsForPayroll(
     }
 
     const remainingForThisDraft = Math.max(0, Math.round((loanAmount - paidTotal) * 1000) / 1000);
+    if (remainingForThisDraft <= 0) {
+      continue;
+    }
+
+    // Determine monthly installment for this loan
+    const installmentMonths = loan.installmentMonths && loan.installmentMonths > 0 ? loan.installmentMonths : 1;
+    let targetInstallment = loan.monthlyInstallment && parseFloat(loan.monthlyInstallment) > 0
+      ? parseFloat(loan.monthlyInstallment)
+      : (installmentMonths > 1 ? Math.round((loanAmount / installmentMonths) * 1000) / 1000 : remainingForThisDraft);
+
+    const deductionAmount = Math.min(targetInstallment, remainingForThisDraft);
 
     if (currentPayrollRepayment) {
       totalLoanDeduction += parseFloat(currentPayrollRepayment.amount);
-    } else if (remainingForThisDraft > 0) {
+    } else if (deductionAmount > 0) {
       await db.insert(schema.repayments).values({
         loanId: loan.id,
         date: periodEnd,
-        amount: remainingForThisDraft.toFixed(3),
+        amount: deductionAmount.toFixed(3),
         method: 'PAYROLL',
         payrollId,
         status: 'SCHEDULED',
         createdBy: actorId || null,
       });
 
-      totalLoanDeduction += remainingForThisDraft;
+      totalLoanDeduction += deductionAmount;
     }
   }
 
   return Math.round(totalLoanDeduction * 1000) / 1000;
+}
+
+export async function getEmployeeExpectedLoanDeduction(
+  db: any,
+  employeeId: string,
+  targetMonth: string // YYYY-MM
+): Promise<number> {
+  const activeLoans = await db.select().from(schema.loans).where(
+    and(
+      eq(schema.loans.employeeId, employeeId),
+      eq(schema.loans.status, 'DISBURSED')
+    )
+  );
+
+  let totalDeduction = 0;
+
+  for (const loan of activeLoans) {
+    const loanAmount = parseFloat(loan.amount);
+    const startMonth = loan.startMonth || (loan.date ? loan.date.slice(0, 7) : targetMonth);
+
+    if (targetMonth < startMonth) {
+      continue;
+    }
+
+    const existingRepayments = await db.select({
+      id: schema.repayments.id,
+      amount: schema.repayments.amount,
+      method: schema.repayments.method,
+      status: schema.repayments.status,
+      date: schema.repayments.date,
+      payrollStatus: schema.payroll.status,
+    })
+    .from(schema.repayments)
+    .leftJoin(schema.payroll, eq(schema.repayments.payrollId, schema.payroll.id))
+    .where(eq(schema.repayments.loanId, loan.id));
+
+    let paidTotal = 0;
+    for (const rep of existingRepayments) {
+      const repMonth = rep.date ? rep.date.slice(0, 7) : '';
+      if (repMonth && repMonth < targetMonth) {
+        const repAmount = parseFloat(rep.amount);
+        if (rep.method === 'CASH' && rep.status === 'PAID') {
+          paidTotal += repAmount;
+        } else if (
+          rep.method === 'PAYROLL' &&
+          (rep.payrollStatus === 'PAID' ||
+            rep.payrollStatus === 'APPROVED' ||
+            rep.payrollStatus === 'DRAFT' ||
+            rep.status === 'SCHEDULED')
+        ) {
+          paidTotal += repAmount;
+        }
+      }
+    }
+
+    const remaining = Math.max(0, Math.round((loanAmount - paidTotal) * 1000) / 1000);
+    if (remaining <= 0) continue;
+
+    const installmentMonths = loan.installmentMonths && loan.installmentMonths > 0 ? loan.installmentMonths : 1;
+    const targetInstallment = loan.monthlyInstallment && parseFloat(loan.monthlyInstallment) > 0
+      ? parseFloat(loan.monthlyInstallment)
+      : (installmentMonths > 1 ? Math.round((loanAmount / installmentMonths) * 1000) / 1000 : remaining);
+
+    totalDeduction += Math.min(targetInstallment, remaining);
+  }
+
+  return Math.round(totalDeduction * 1000) / 1000;
 }
 
 export async function createPayrollDraft(
@@ -1681,7 +1766,11 @@ export async function getMonthlyPayrollAdjustmentSheet(
         otherDeductions = draftOtherDeductions;
       }
       notes = draft.notes || '';
-      loanDeduction = parseFloat(draft.loanDeduction || '0');
+      if (parseFloat(draft.loanDeduction || '0') > 0) {
+        loanDeduction = parseFloat(draft.loanDeduction);
+      } else {
+        loanDeduction = await getEmployeeExpectedLoanDeduction(db, emp.id, month);
+      }
       if (draft.otHours !== undefined && draft.otHours !== null) {
         otHours = parseFloat(draft.otHours);
       }
@@ -1694,6 +1783,8 @@ export async function getMonthlyPayrollAdjustmentSheet(
       if (draft.earlyDepartureMinutes !== undefined && draft.earlyDepartureMinutes !== null) {
         earlyDepartureMinutes = draft.earlyDepartureMinutes;
       }
+    } else {
+      loanDeduction = await getEmployeeExpectedLoanDeduction(db, emp.id, month);
     }
 
     const calculatedOtRate = isDailyWorker

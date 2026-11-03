@@ -1,14 +1,22 @@
 import React from 'react';
 import { getCurrentUser } from '@/lib/auth/session';
 import { redirect } from 'next/navigation';
-import { getLoans, createLoan, disburseLoan, addRepayment } from '@/lib/services/loan-service';
+import {
+  getLoans,
+  createLoan,
+  disburseLoan,
+  addRepayment,
+  saveBulkLoans,
+} from '@/lib/services/loan-service';
 import { getEmployees } from '@/lib/services/employee-service';
-import { Card, Button, Badge } from '@/components/ui';
-import { CheckCircle } from 'lucide-react';
+import { getDb, schema } from '@/db';
 import { revalidatePath } from 'next/cache';
 import { RBAC } from '@/lib/auth/rbac';
-import { CreateLoanModal } from '@/components/loan/CreateLoanModal';
-import { RepayLoanModal } from '@/components/loan/RepayLoanModal';
+import {
+  LoansManagementClient,
+  EmployeeForLoan,
+  EnrichedLoan,
+} from '@/components/loan/LoansManagementClient';
 
 export default async function LoansPage() {
   const user = await getCurrentUser();
@@ -18,24 +26,107 @@ export default async function LoansPage() {
     redirect('/');
   }
 
-  const [employees, loans] = await Promise.all([
+  const db = getDb();
+  const [rawEmployees, loans, activeContracts] = await Promise.all([
     getEmployees(user),
     getLoans(user),
+    db.select().from(schema.contracts),
   ]);
 
-  async function handleCreateLoan(formData: FormData) {
+  const contractMap = new Map<string, any>();
+  activeContracts.forEach((c: any) => {
+    // Pick the most recent contract for each employee
+    if (!contractMap.has(c.employeeId)) {
+      contractMap.set(c.employeeId, c);
+    }
+  });
+
+  // Calculate current unpaid loan balance per employee
+  const loanBalanceMap = new Map<string, number>();
+  loans.forEach((l) => {
+    if (l.status === 'DISBURSED') {
+      const rem = parseFloat(l.remaining) || 0;
+      if (rem > 0) {
+        loanBalanceMap.set(l.employeeId, (loanBalanceMap.get(l.employeeId) || 0) + rem);
+      }
+    }
+  });
+
+  // Map employees for loan entry table
+  const employeesForLoan: EmployeeForLoan[] = rawEmployees
+    .filter((e) => e.status === 'ACTIVE')
+    .map((e) => {
+      const contract = contractMap.get(e.id);
+      let basicSalary = 0;
+      if (e.employmentType === 'DAILY_WORKER') {
+        basicSalary = parseFloat(e.dailyRate || '0') * 30;
+      } else if (contract) {
+        basicSalary = parseFloat(contract.monthlyBasic || '0');
+      } else {
+        basicSalary = 290;
+      }
+
+      return {
+        id: e.id,
+        employeeNo: e.employeeNo,
+        name: e.name,
+        department: e.department || '',
+        jobTitle: e.jobTitle || '',
+        employmentType: e.employmentType,
+        basicSalary: Math.round(basicSalary * 1000) / 1000,
+        currentLoanBalance: Math.round((loanBalanceMap.get(e.id) || 0) * 1000) / 1000,
+      };
+    });
+
+  async function handleSaveBulkLoans(data: {
+    date: string;
+    startMonth: string;
+    disburseImmediately: boolean;
+    items: Array<{
+      employeeId: string;
+      amount: number;
+      installmentMonths: number;
+      monthlyInstallment: number;
+      startMonth: string;
+      notes?: string;
+    }>;
+  }) {
     'use server';
     const currentUser = await getCurrentUser();
-    if (!currentUser) throw new Error('غير مصرح');
+    if (!currentUser) throw new Error('غير مصرح لك بتسجيل السلف');
+
+    const res = await saveBulkLoans(currentUser, data);
+    revalidatePath('/loans');
+    revalidatePath('/payroll');
+    revalidatePath('/payroll/adjustments');
+    revalidatePath('/payroll/consolidated');
+    return res;
+  }
+
+  async function handleCreateSingleLoan(formData: FormData) {
+    'use server';
+    const currentUser = await getCurrentUser();
+    if (!currentUser) throw new Error('غير مصرح لك بإنشاء السلفة');
+
+    const amount = parseFloat(formData.get('amount') as string);
+    const installmentMonths = parseInt((formData.get('installmentMonths') as string) || '1', 10);
+    const startMonth = (formData.get('startMonth') as string) || undefined;
+    const disburseImmediately = formData.get('disburseImmediately') === 'true';
 
     await createLoan(currentUser, {
       employeeId: formData.get('employeeId') as string,
       date: formData.get('date') as string,
-      amount: parseFloat(formData.get('amount') as string),
+      amount,
+      installmentMonths,
+      startMonth,
+      disburseImmediately,
       notes: (formData.get('notes') as string) || undefined,
     });
 
     revalidatePath('/loans');
+    revalidatePath('/payroll');
+    revalidatePath('/payroll/adjustments');
+    revalidatePath('/payroll/consolidated');
   }
 
   async function handleDisburseLoan(formData: FormData) {
@@ -45,6 +136,9 @@ export default async function LoansPage() {
 
     await disburseLoan(currentUser, formData.get('loanId') as string);
     revalidatePath('/loans');
+    revalidatePath('/payroll');
+    revalidatePath('/payroll/adjustments');
+    revalidatePath('/payroll/consolidated');
   }
 
   async function handleAddCashRepayment(formData: FormData) {
@@ -60,83 +154,19 @@ export default async function LoansPage() {
     });
 
     revalidatePath('/loans');
+    revalidatePath('/payroll');
+    revalidatePath('/payroll/adjustments');
+    revalidatePath('/payroll/consolidated');
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[#15324F]">سلف الموظفين والمستحقات</h1>
-          <p className="text-slate-500 text-sm mt-1">إدارة السلف، صرف الدفعات، وجدولة ومتابعة الأقساط والسدادات النقدية</p>
-        </div>
-
-        <CreateLoanModal employees={employees} createLoanAction={handleCreateLoan} />
-      </div>
-
-      <Card className="p-0 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-right text-sm">
-            <thead className="bg-slate-50 border-b text-slate-600 font-semibold">
-              <tr>
-                <th className="py-3 px-4">اسم الموظف</th>
-                <th className="py-3 px-4">تاريخ السلفة</th>
-                <th className="py-3 px-4">مبلغ السلفة</th>
-                <th className="py-3 px-4">المسدد فعلياً</th>
-                <th className="py-3 px-4">المتبقي</th>
-                <th className="py-3 px-4">الحالة</th>
-                <th className="py-3 px-4">الإجراءات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loans.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
-                    لا توجد سلف مسجلة
-                  </td>
-                </tr>
-              ) : (
-                loans.map((l) => (
-                  <tr key={l.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-3 px-4 font-semibold text-[#15324F]">{l.employeeName}</td>
-                    <td className="py-3 px-4 font-mono">{l.date}</td>
-                    <td className="py-3 px-4 font-mono font-bold text-slate-800">{parseFloat(l.amount).toFixed(3)} {l.currency}</td>
-                    <td className="py-3 px-4 font-mono text-emerald-700 font-semibold">{l.paidTotal} {l.currency}</td>
-                    <td className="py-3 px-4 font-mono text-rose-700 font-semibold">{l.remaining} {l.currency}</td>
-                    <td className="py-3 px-4">
-                      <Badge variant={l.status === 'DISBURSED' ? 'active' : l.status === 'PROPOSED' ? 'pending' : 'draft'}>
-                        {l.status === 'DISBURSED' ? 'مصروفة' : l.status === 'PROPOSED' ? 'مقترحة' : 'ملغاة'}
-                      </Badge>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center space-x-2 space-x-reverse">
-                        {l.status === 'PROPOSED' && (
-                          <form action={handleDisburseLoan}>
-                            <input type="hidden" name="loanId" value={l.id} />
-                            <Button type="submit" size="sm" variant="outline" className="text-emerald-700 border-emerald-300 hover:bg-emerald-50 cursor-pointer">
-                              <CheckCircle className="w-3.5 h-3.5 ml-1" />
-                              صرف السلفة
-                            </Button>
-                          </form>
-                        )}
-
-                        {l.status === 'DISBURSED' && parseFloat(l.remaining) > 0 && (
-                          <RepayLoanModal
-                            loanId={l.id}
-                            employeeName={l.employeeName}
-                            remainingAmount={l.remaining}
-                            currency={l.currency}
-                            repayLoanAction={handleAddCashRepayment}
-                          />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
+    <LoansManagementClient
+      employees={employeesForLoan}
+      initialLoans={loans as EnrichedLoan[]}
+      saveBulkLoansAction={handleSaveBulkLoans}
+      createSingleLoanAction={handleCreateSingleLoan}
+      disburseLoanAction={handleDisburseLoan}
+      addCashRepaymentAction={handleAddCashRepayment}
+    />
   );
 }

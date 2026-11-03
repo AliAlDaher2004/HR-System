@@ -16,6 +16,7 @@ import {
   approvePayroll,
 } from '../src/lib/services/payroll-service';
 import { getPayslipData, getBatchPayslipData } from '../src/lib/services/payslip-service';
+import { saveBulkLoans, getLoans } from '../src/lib/services/loan-service';
 import { UserSession } from '../src/lib/auth/rbac';
 import { eq } from 'drizzle-orm';
 
@@ -321,5 +322,98 @@ describe('Daily Penalties, Delivery Allowances, and Monthly Payroll Adjustments'
 
     // Check gross: 290 + 30 + 3 + 15 + 10 + otTotal
     expect(parseFloat(payslip.totalEarnings)).toBeCloseTo(384.25, 1);
+  });
+
+  it('6. should support bulk loan registration and multi-month long-term loan installments deducting accurately per month in payroll', async () => {
+    // 1. Create a second employee for testing bulk entry
+    const emp2 = await createEmployee(adminUser, {
+      employeeNo: 'EMP-BULK-002',
+      name: 'عامل سلف تجريبي',
+      department: 'المصنع',
+      jobTitle: 'عامل خط إنتاج',
+      startDate: '2026-01-01',
+      employmentType: 'PERMANENT',
+    });
+    await createContract(adminUser, {
+      employeeId: emp2.id,
+      startDate: '2026-01-01',
+      monthlyBasic: 290,
+      monthlyAllowances: 30,
+      unpaidDayRate: 9.667,
+      otRate: 2.417,
+    });
+
+    // 2. Perform bulk loan registration:
+    // Emp 1: 300 JOD long-term loan over 3 months (100 JOD/month) starting in 2026-11
+    // Emp 2: 50 JOD single-month advance in 2026-11
+    const bulkRes = await saveBulkLoans(adminUser, {
+      date: '2026-11-01',
+      startMonth: '2026-11',
+      disburseImmediately: true,
+      items: [
+        {
+          employeeId: testEmpId,
+          amount: 300,
+          installmentMonths: 3,
+          monthlyInstallment: 100,
+          startMonth: '2026-11',
+          notes: 'سلفة طويلة الأمد 300 دينار',
+        },
+        {
+          employeeId: emp2.id,
+          amount: 50,
+          installmentMonths: 1,
+          monthlyInstallment: 50,
+          startMonth: '2026-11',
+          notes: 'سلفة شهرية عادية',
+        },
+      ],
+    });
+
+    expect(bulkRes.success).toBe(true);
+    expect(bulkRes.createdCount).toBe(2);
+    expect(bulkRes.totalAmount).toBe(350);
+
+    // 3. Verify getLoans returns installment plans
+    const allLoans = await getLoans(adminUser);
+    const loanEmp1 = allLoans.find((l) => l.employeeId === testEmpId && parseFloat(l.amount) === 300);
+    const loanEmp2 = allLoans.find((l) => l.employeeId === emp2.id);
+
+    expect(loanEmp1).toBeDefined();
+    expect(loanEmp1?.installmentMonths).toBe(3);
+    expect(parseFloat(loanEmp1?.monthlyInstallment || '0')).toBe(100);
+    expect(loanEmp1?.status).toBe('DISBURSED');
+
+    expect(loanEmp2).toBeDefined();
+    expect(loanEmp2?.installmentMonths).toBe(1);
+    expect(parseFloat(loanEmp2?.monthlyInstallment || '0')).toBe(50);
+
+    // 4. Check monthly adjustment sheet for 2026-11:
+    // Emp 2 should automatically have loanDeduction = 50 in 2026-11
+    const sheetData11 = await getMonthlyPayrollAdjustmentSheet(adminUser, '2026-11');
+    const rowEmp2 = sheetData11.rows.find((r) => r.employeeId === emp2.id);
+    expect(rowEmp2).toBeDefined();
+    expect(rowEmp2?.loanDeduction).toBe(50);
+
+    // 5. Save/generate payroll for Emp 2 in 2026-11 and check loan deduction is 50
+    await saveMonthlyPayrollAdjustments(adminUser, '2026-11', [
+      {
+        employeeId: emp2.id,
+        loanDeduction: 50,
+        status: 'APPROVED',
+      },
+    ]);
+
+    // 6. Next month 2026-12:
+    // Emp 2 should have 0 loan deduction because the 50 JOD was fully repaid!
+    const sheetData12 = await getMonthlyPayrollAdjustmentSheet(adminUser, '2026-12');
+    const rowEmp2Month12 = sheetData12.rows.find((r) => r.employeeId === emp2.id);
+    expect(rowEmp2Month12).toBeDefined();
+    expect(rowEmp2Month12?.loanDeduction).toBe(0);
+
+    // Emp 1 should have installment of 100 in 2026-12 (month 2 of 3)
+    const rowEmp1Month12 = sheetData12.rows.find((r) => r.employeeId === testEmpId);
+    expect(rowEmp1Month12).toBeDefined();
+    expect(rowEmp1Month12?.loanDeduction).toBe(100);
   });
 });
