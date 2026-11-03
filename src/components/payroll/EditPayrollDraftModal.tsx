@@ -11,6 +11,7 @@ interface EditPayrollDraftModalProps {
     periodStart: string;
     basicEarned?: string | number;
     allowancesEarned?: string | number;
+    deliveryAllowance?: string | number;
     gratuities?: string | number;
     otherAdditions?: string | number;
     otherDeductions: string | number;
@@ -59,7 +60,9 @@ export function EditPayrollDraftModal({
 
   const otTotal = otHours * otRate;
   const transportationAllowance = isDailyWorker ? 0 : (payroll.allowancesEarned !== undefined && Number(payroll.allowancesEarned) >= 0 && Number(payroll.allowancesEarned) !== 30 ? Number(payroll.allowancesEarned) : Math.max(0, 30 - unpaidDays));
-  const grossPay = basicEarned + transportationAllowance + gratuities + otTotal;
+  const deliveryAllowance = Number(payroll.deliveryAllowance || 0);
+  const otherAdditions = Number(payroll.otherAdditions || 0);
+  const grossPay = basicEarned + transportationAllowance + deliveryAllowance + gratuities + otherAdditions + otTotal;
 
   const unpaidDayRate = Number(payroll.unpaidDayRate || (basicEarned > 0 ? basicEarned / 26 : 0));
   const unpaidDeduction = isDailyWorker ? 0 : unpaidDays * unpaidDayRate;
