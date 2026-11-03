@@ -416,4 +416,81 @@ describe('Daily Penalties, Delivery Allowances, and Monthly Payroll Adjustments'
     expect(rowEmp1Month12).toBeDefined();
     expect(rowEmp1Month12?.loanDeduction).toBe(100);
   });
+
+  it('7. should allow retroactive loan entry for archived (TERMINATED) employees and include them in adjustment sheets and payroll deductions', async () => {
+    // 1. Create an archived (TERMINATED) employee
+    const archEmp = await createEmployee(adminUser, {
+      employeeNo: 'ARCH-LOAN-01',
+      name: 'Archived Worker For Loan',
+      department: 'Warehouse',
+      jobTitle: 'Former Packer',
+      startDate: '2026-06-01',
+      employmentType: 'PERMANENT',
+    });
+
+    const db = getDb();
+    // Mark as archived / TERMINATED with an end date
+    await db.update(schema.employees)
+      .set({
+        status: 'TERMINATED',
+        endDate: '2026-09-30',
+      })
+      .where(eq(schema.employees.id, archEmp.id));
+
+    await createContract(adminUser, {
+      employeeId: archEmp.id,
+      startDate: '2026-06-01',
+      monthlyBasic: 290,
+      monthlyAllowances: 0,
+      unpaidDayRate: 9.667,
+      otRate: 2.417,
+    });
+
+    // 2. Retroactively record a loan for the archived employee
+    const bulkRes = await saveBulkLoans(adminUser, {
+      date: '2026-09-15',
+      startMonth: '2026-09',
+      disburseImmediately: true,
+      items: [
+        {
+          employeeId: archEmp.id,
+          amount: 60,
+          installmentMonths: 1,
+          monthlyInstallment: 60,
+          startMonth: '2026-09',
+          notes: 'سلفة باثر رجعي لموظف مؤرشف',
+        },
+      ],
+    });
+
+    expect(bulkRes.success).toBe(true);
+    expect(bulkRes.createdCount).toBe(1);
+
+    // 3. Verify loan exists in getLoans
+    const loans = await getLoans(adminUser, archEmp.id);
+    expect(loans.length).toBe(1);
+    expect(loans[0].employeeId).toBe(archEmp.id);
+    expect(parseFloat(loans[0].amount)).toBe(60);
+
+    // 4. Verify archived employee appears in monthly adjustment sheet for 2026-09
+    const sheet09 = await getMonthlyPayrollAdjustmentSheet(adminUser, '2026-09');
+    const rowArch = sheet09.rows.find((r) => r.employeeId === archEmp.id);
+    expect(rowArch).toBeDefined();
+    expect(rowArch?.name).toBe('Archived Worker For Loan');
+    expect(rowArch?.loanDeduction).toBe(60);
+
+    // 5. Save adjustments and verify payroll draft created with the 60 loan deduction
+    await saveMonthlyPayrollAdjustments(adminUser, '2026-09', [
+      {
+        employeeId: archEmp.id,
+        loanDeduction: 60,
+        status: 'DRAFT',
+      },
+    ]);
+
+    const updatedSheet09 = await getMonthlyPayrollAdjustmentSheet(adminUser, '2026-09');
+    const updatedRowArch = updatedSheet09.rows.find((r) => r.employeeId === archEmp.id);
+    expect(updatedRowArch?.payrollStatus).toBe('DRAFT');
+    expect(updatedRowArch?.loanDeduction).toBe(60);
+  });
 });

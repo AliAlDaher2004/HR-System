@@ -52,31 +52,30 @@ export default async function LoansPage() {
     }
   });
 
-  // Map employees for loan entry table
-  const employeesForLoan: EmployeeForLoan[] = rawEmployees
-    .filter((e) => e.status === 'ACTIVE')
-    .map((e) => {
-      const contract = contractMap.get(e.id);
-      let basicSalary = 0;
-      if (e.employmentType === 'DAILY_WORKER') {
-        basicSalary = parseFloat(e.dailyRate || '0') * 30;
-      } else if (contract) {
-        basicSalary = parseFloat(contract.monthlyBasic || '0');
-      } else {
-        basicSalary = 290;
-      }
+  // Map employees for loan entry table (both ACTIVE and TERMINATED/Archived for retroactive loan entry)
+  const employeesForLoan: EmployeeForLoan[] = rawEmployees.map((e) => {
+    const contract = contractMap.get(e.id);
+    let basicSalary = 0;
+    if (e.employmentType === 'DAILY_WORKER') {
+      basicSalary = parseFloat(e.dailyRate || '0') * 30;
+    } else if (contract) {
+      basicSalary = parseFloat(contract.monthlyBasic || '0');
+    } else {
+      basicSalary = 290;
+    }
 
-      return {
-        id: e.id,
-        employeeNo: e.employeeNo,
-        name: e.name,
-        department: e.department || '',
-        jobTitle: e.jobTitle || '',
-        employmentType: e.employmentType,
-        basicSalary: Math.round(basicSalary * 1000) / 1000,
-        currentLoanBalance: Math.round((loanBalanceMap.get(e.id) || 0) * 1000) / 1000,
-      };
-    });
+    return {
+      id: e.id,
+      employeeNo: e.employeeNo,
+      name: e.name,
+      department: e.department || '',
+      jobTitle: e.jobTitle || '',
+      employmentType: e.employmentType,
+      status: e.status,
+      basicSalary: Math.round(basicSalary * 1000) / 1000,
+      currentLoanBalance: Math.round((loanBalanceMap.get(e.id) || 0) * 1000) / 1000,
+    };
+  });
 
   async function handleSaveBulkLoans(data: {
     date: string;

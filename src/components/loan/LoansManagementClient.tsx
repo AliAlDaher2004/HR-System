@@ -13,6 +13,7 @@ export interface EmployeeForLoan {
   department: string;
   jobTitle: string;
   employmentType: 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER';
+  status: 'ACTIVE' | 'TERMINATED';
   basicSalary: number;
   currentLoanBalance: number;
 }
@@ -94,7 +95,12 @@ export function LoansManagementClient({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDept, setSelectedDept] = useState<string>('ALL');
   const [selectedType, setSelectedType] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'TERMINATED'>('ALL');
   const [showOnlyWithBalance, setShowOnlyWithBalance] = useState<boolean>(false);
+
+  // Active / Archived counts
+  const activeCount = useMemo(() => employees.filter((e) => e.status === 'ACTIVE').length, [employees]);
+  const archivedCount = useMemo(() => employees.filter((e) => e.status === 'TERMINATED').length, [employees]);
 
   // Feedback notifications
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -236,12 +242,15 @@ export function LoansManagementClient({
       if (selectedType !== 'ALL' && e.employmentType !== selectedType) {
         return false;
       }
+      if (statusFilter !== 'ALL' && e.status !== statusFilter) {
+        return false;
+      }
       if (showOnlyWithBalance && e.currentLoanBalance <= 0) {
         return false;
       }
       return true;
     });
-  }, [employees, searchTerm, selectedDept, selectedType, showOnlyWithBalance]);
+  }, [employees, searchTerm, selectedDept, selectedType, statusFilter, showOnlyWithBalance]);
 
   // Aggregate stats of current inputs
   const inputStats = useMemo(() => {
@@ -383,7 +392,12 @@ export function LoansManagementClient({
         {/* Action Controls & Single Loan Modal */}
         <div className="flex items-center gap-2">
           <CreateLoanModal
-            employees={employees.map((e) => ({ id: e.id, name: e.name, employeeNo: e.employeeNo }))}
+            employees={employees.map((e) => ({
+              id: e.id,
+              name: e.name,
+              employeeNo: e.employeeNo,
+              status: e.status,
+            }))}
             createLoanAction={createSingleLoanAction}
           />
         </div>
@@ -580,6 +594,19 @@ export function LoansManagementClient({
                 </select>
               </div>
 
+              <div className="flex items-center gap-1">
+                <span className="font-bold text-slate-700">الحالة:</span>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as any)}
+                  className="win-input text-xs px-1.5 py-1 font-semibold"
+                >
+                  <option value="ALL">الكل ({employees.length})</option>
+                  <option value="ACTIVE">النشطون فقط ({activeCount})</option>
+                  <option value="TERMINATED">المؤرشفون فقط ({archivedCount})</option>
+                </select>
+              </div>
+
               <label className="flex items-center gap-1 bg-white px-2 py-1 border border-slate-300 rounded cursor-pointer font-bold text-slate-800">
                 <input
                   type="checkbox"
@@ -611,6 +638,7 @@ export function LoansManagementClient({
                   <th className="p-1.5 text-center w-8 border-l border-slate-300">#</th>
                   <th className="p-1.5 border-l border-slate-300 min-w-[70px] text-center">الرقم</th>
                   <th className="p-1.5 border-l border-slate-300 min-w-[140px]">اسم الموظف</th>
+                  <th className="p-1.5 border-l border-slate-300 min-w-[75px] text-center">الحالة</th>
                   <th className="p-1.5 border-l border-slate-300 min-w-[90px]">القسم</th>
                   <th className="p-1.5 border-l border-slate-300 min-w-[75px] text-center">التعيين</th>
                   <th className="p-1.5 border-l border-slate-300 min-w-[80px] text-center">الراتب الأساسي</th>
@@ -635,7 +663,7 @@ export function LoansManagementClient({
               <tbody className="divide-y divide-slate-200">
                 {filteredEmployees.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="p-8 text-center text-slate-400 font-bold">
+                    <td colSpan={13} className="p-8 text-center text-slate-400 font-bold">
                       لا يوجد موظفون يطابقون خيارات البحث المحددة.
                     </td>
                   </tr>
@@ -676,6 +704,20 @@ export function LoansManagementClient({
                         {/* Employee Name */}
                         <td className="p-1.5 font-bold text-slate-900 border-l border-slate-200 whitespace-nowrap">
                           {emp.name}
+                        </td>
+
+                        {/* Status (Active / Terminated-Archived) */}
+                        <td className="p-1.5 text-center border-l border-slate-200">
+                          {emp.status === 'TERMINATED' ? (
+                            <span className="px-1.5 py-0.5 text-[9.5px] rounded bg-slate-200 text-slate-700 font-bold border border-slate-300 inline-flex items-center gap-0.5 shadow-sm">
+                              <span>📁</span>
+                              <span>مؤرشف</span>
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 text-[9.5px] rounded bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
+                              نشط
+                            </span>
+                          )}
                         </td>
 
                         {/* Department */}

@@ -1,5 +1,5 @@
 import { getDb, schema } from '../../db';
-import { eq, and, sql, desc, gte, lte } from 'drizzle-orm';
+import { eq, and, or, sql, desc, gte, lte } from 'drizzle-orm';
 import { UserSession, RBAC, AuthorizationError, requireRole, assertCanApprovePayroll, assertCanViewFinancials } from '../auth/rbac';
 import { logAuditEvent } from '../auth/audit';
 import { getSystemSettings } from './settings-service';
@@ -1225,14 +1225,18 @@ export async function generateBulkPayrollDrafts(
   const lastDay = new Date(Date.UTC(data.year, data.month, 0)).getUTCDate();
   const periodEnd = `${data.year}-${paddedMonth}-${String(lastDay).padStart(2, '0')}`;
 
+  const targetMonthStr = `${data.year}-${paddedMonth}`;
   const eligibleEmployees = await db
     .select()
     .from(schema.employees)
     .where(
-      and(
-        lte(schema.employees.startDate, periodEnd),
-        sql`(${schema.employees.endDate} IS NULL OR ${schema.employees.endDate} >= ${periodStart})`,
-        sql`(${schema.employees.status} = 'ACTIVE' OR (${schema.employees.endDate} IS NOT NULL AND ${schema.employees.endDate} >= ${periodStart}))`
+      or(
+        and(
+          lte(schema.employees.startDate, periodEnd),
+          sql`(${schema.employees.endDate} IS NULL OR ${schema.employees.endDate} >= ${periodStart})`,
+          sql`(${schema.employees.status} = 'ACTIVE' OR (${schema.employees.endDate} IS NOT NULL AND ${schema.employees.endDate} >= ${periodStart}))`
+        ),
+        sql`${schema.employees.id} IN (SELECT employee_id FROM loans WHERE status = 'DISBURSED' AND (start_month IS NULL OR start_month <= ${targetMonthStr}))`
       )
     );
 
@@ -1625,10 +1629,14 @@ export async function getMonthlyPayrollAdjustmentSheet(
     .select()
     .from(schema.employees)
     .where(
-      and(
-        lte(schema.employees.startDate, periodEnd),
-        sql`(${schema.employees.endDate} IS NULL OR ${schema.employees.endDate} >= ${periodStart})`,
-        sql`(${schema.employees.status} = 'ACTIVE' OR (${schema.employees.endDate} IS NOT NULL AND ${schema.employees.endDate} >= ${periodStart}))`
+      or(
+        and(
+          lte(schema.employees.startDate, periodEnd),
+          sql`(${schema.employees.endDate} IS NULL OR ${schema.employees.endDate} >= ${periodStart})`,
+          sql`(${schema.employees.status} = 'ACTIVE' OR (${schema.employees.endDate} IS NOT NULL AND ${schema.employees.endDate} >= ${periodStart}))`
+        ),
+        sql`${schema.employees.id} IN (SELECT employee_id FROM payroll WHERE period_start = ${periodStart} AND status != 'CANCELLED')`,
+        sql`${schema.employees.id} IN (SELECT employee_id FROM loans WHERE status = 'DISBURSED' AND (start_month IS NULL OR start_month <= ${month}))`
       )
     )
     .orderBy(schema.employees.employeeNo);

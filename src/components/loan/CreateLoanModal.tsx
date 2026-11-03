@@ -5,7 +5,7 @@ import { Button, Modal } from '@/components/ui';
 import { Plus } from 'lucide-react';
 
 interface CreateLoanModalProps {
-  employees: Array<{ id: string; name: string; employeeNo: string }>;
+  employees: Array<{ id: string; name: string; employeeNo: string; status?: string }>;
   createLoanAction: (formData: FormData) => Promise<void>;
 }
 
@@ -64,7 +64,7 @@ export function CreateLoanModal({ employees, createLoanAction }: CreateLoanModal
             <select name="employeeId" required className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-[#2169A6]">
               {employees.map((e) => (
                 <option key={e.id} value={e.id}>
-                  {e.name} ({e.employeeNo})
+                  {e.name} ({e.employeeNo}){e.status === 'TERMINATED' ? ' 📁 [مؤرشف]' : ''}
                 </option>
               ))}
             </select>
