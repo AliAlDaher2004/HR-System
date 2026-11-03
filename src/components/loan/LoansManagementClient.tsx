@@ -72,8 +72,8 @@ interface LoansManagementClientProps {
 }
 
 export function LoansManagementClient({
-  employees,
-  initialLoans,
+  employees = [],
+  initialLoans = [],
   saveBulkLoansAction,
   createSingleLoanAction,
   disburseLoanAction,
@@ -899,8 +899,11 @@ export function LoansManagementClient({
                   </tr>
                 ) : (
                   initialLoans.map((l) => {
-                    const isLongTerm = l.installmentMonths > 1;
-                    const remNum = parseFloat(l.remaining) || 0;
+                    const isLongTerm = (l.installmentMonths || 1) > 1;
+                    const amtNum = parseFloat(l.amount || '0') || 0;
+                    const paidNum = parseFloat(l.paidTotal || '0') || 0;
+                    const remNum = parseFloat(l.remaining || '0') || 0;
+                    const instNum = parseFloat(l.monthlyInstallment || '0') || (amtNum / (l.installmentMonths || 1));
                     const isFullyPaid = remNum <= 0 && l.status === 'DISBURSED';
 
                     return (
@@ -915,16 +918,16 @@ export function LoansManagementClient({
                           {l.date}
                         </td>
                         <td className="p-2 text-center font-mono font-bold text-slate-900 border-l border-slate-200">
-                          {parseFloat(l.amount).toFixed(2)} د.أ
+                          {amtNum.toFixed(2)} د.أ
                         </td>
                         <td className="p-2 border-l border-slate-200">
                           {isLongTerm ? (
                             <div className="space-y-0.5">
                               <span className="font-bold text-purple-900 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 text-[10.5px]">
-                                مقسطة على {l.installmentMonths} أشهر ({parseFloat(l.monthlyInstallment).toFixed(2)} د.أ/شهر)
+                                مقسطة على {l.installmentMonths} أشهر ({instNum.toFixed(2)} د.أ/شهر)
                               </span>
                               <div className="text-[10px] text-slate-500 font-mono">
-                                بدء الخصم: {l.startMonth}
+                                بدء الخصم: {l.startMonth || '-'}
                               </div>
                             </div>
                           ) : (
@@ -934,7 +937,7 @@ export function LoansManagementClient({
                           )}
                         </td>
                         <td className="p-2 text-center font-mono font-bold text-emerald-700 border-l border-slate-200">
-                          {parseFloat(l.paidTotal).toFixed(2)} د.أ
+                          {paidNum.toFixed(2)} د.أ
                         </td>
                         <td className="p-2 text-center font-mono font-bold border-l border-slate-200">
                           {remNum > 0 ? (
