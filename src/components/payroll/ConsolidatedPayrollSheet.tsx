@@ -43,6 +43,44 @@ export function ConsolidatedPayrollSheet({
     initialType
   );
 
+  // Month navigation helpers
+  const handleMonthChange = (newMonth: string) => {
+    if (!newMonth) return;
+    const typeParam = selectedType !== 'ALL' ? `&type=${selectedType}` : '';
+    window.location.href = `/payroll/consolidated?month=${newMonth}${typeParam}`;
+  };
+
+  const prevMonthStr = useMemo(() => {
+    const [y, m] = periodMonth.split('-').map(Number);
+    const date = new Date(y, m - 2, 1);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  }, [periodMonth]);
+
+  const nextMonthStr = useMemo(() => {
+    const [y, m] = periodMonth.split('-').map(Number);
+    const date = new Date(y, m, 1);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  }, [periodMonth]);
+
+  const handlePrevMonth = () => {
+    handleMonthChange(prevMonthStr);
+  };
+
+  const handleNextMonth = () => {
+    handleMonthChange(nextMonthStr);
+  };
+
+  const handleCurrentMonth = () => {
+    const today = new Date();
+    const cMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    handleMonthChange(cMonth);
+  };
+
+  const lastDay = useMemo(() => {
+    const [y, m] = periodMonth.split('-').map(Number);
+    return new Date(y, m, 0).getDate();
+  }, [periodMonth]);
+
   // Group counts
   const allCount = rows.length;
   const permanentCount = rows.filter((r) => r.employmentType === 'PERMANENT').length;
@@ -201,8 +239,8 @@ export function ConsolidatedPayrollSheet({
         }
       `}</style>
 
-      {/* Top Action Bar with Tabs & Print (hidden when printing) */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-[#ECE9D8] win-raised p-3 mb-4 gap-3 no-print">
+      {/* Top Action Bar with Tabs, Month Controls & Print (hidden when printing) */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center bg-[#ECE9D8] win-raised p-2.5 mb-4 gap-3 no-print">
         {/* Filter Tabs to Separate Sheets */}
         <div className="flex flex-wrap items-center gap-1.5">
           <button
@@ -276,6 +314,73 @@ export function ConsolidatedPayrollSheet({
           )}
         </div>
 
+        {/* Center: Month Selector Controls */}
+        <div className="flex flex-wrap items-center gap-1.5 bg-white px-2.5 py-1 border border-[#7F9DB9] rounded shadow-sm">
+          <span className="text-xs font-bold text-slate-800">الشهر:</span>
+          <button
+            onClick={handlePrevMonth}
+            type="button"
+            className="win-box-btn px-2 py-0.5 text-xs font-bold hover:bg-slate-200 flex items-center gap-1"
+            title={`الانتقال للشهر السابق (${prevMonthStr})`}
+          >
+            <span>◀</span>
+            <span className="hidden sm:inline">السابق</span>
+          </button>
+          <input
+            type="month"
+            value={periodMonth}
+            onChange={(e) => {
+              if (e.target.value) handleMonthChange(e.target.value);
+            }}
+            className="win-input text-xs font-mono font-bold px-2 py-0.5 border border-[#7F9DB9] bg-amber-50 text-slate-900"
+          />
+          <button
+            onClick={handleNextMonth}
+            type="button"
+            className="win-box-btn px-2 py-0.5 text-xs font-bold hover:bg-slate-200 flex items-center gap-1"
+            title={`الانتقال للشهر التالي (${nextMonthStr})`}
+          >
+            <span className="hidden sm:inline">التالي</span>
+            <span>▶</span>
+          </button>
+          <button
+            onClick={handleCurrentMonth}
+            type="button"
+            className="win-btn text-[10px] px-2 py-0.5 font-bold"
+            title="الانتقال للشهر الحالي"
+          >
+            الحالي
+          </button>
+
+          {/* Direct Quick-Switch Buttons for October & November */}
+          <div className="flex items-center gap-1 mr-1 border-r border-slate-300 pr-1.5">
+            <button
+              onClick={() => handleMonthChange('2026-10')}
+              type="button"
+              className={`win-btn text-[11px] px-2.5 py-0.5 font-bold transition-all ${
+                periodMonth === '2026-10'
+                  ? 'bg-blue-700 text-white font-black shadow-inner border border-blue-900'
+                  : 'bg-white text-blue-900 hover:bg-blue-50 border border-slate-300'
+              }`}
+              title="الانتقال مباشرة إلى بيان شهر 10"
+            >
+              ⭐ شهر 10 (2026-10)
+            </button>
+            <button
+              onClick={() => handleMonthChange('2026-11')}
+              type="button"
+              className={`win-btn text-[11px] px-2.5 py-0.5 font-bold transition-all ${
+                periodMonth === '2026-11'
+                  ? 'bg-blue-700 text-white font-black shadow-inner border border-blue-900'
+                  : 'bg-white text-blue-900 hover:bg-blue-50 border border-slate-300'
+              }`}
+              title="الانتقال مباشرة إلى بيان شهر 11"
+            >
+              شهر 11 (2026-11)
+            </button>
+          </div>
+        </div>
+
         {/* Print Button */}
         <div className="flex items-center gap-2">
           <button
@@ -309,7 +414,7 @@ export function ConsolidatedPayrollSheet({
             </h2>
             <div className="text-xs text-slate-700 font-medium">
               الفترة من: <span className="font-mono">{periodMonth}-01</span> الى:{' '}
-              <span className="font-mono">{periodMonth}-31</span> | عدد الموظفين:{' '}
+              <span className="font-mono">{periodMonth}-{String(lastDay).padStart(2, '0')}</span> | عدد الموظفين:{' '}
               <span className="font-mono font-bold text-black">{displayedRows.length}</span> موظف
             </div>
           </div>

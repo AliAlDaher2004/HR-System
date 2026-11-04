@@ -78,7 +78,6 @@ describe('Daily Penalties, Delivery Allowances, and Monthly Payroll Adjustments'
     // Create contract with basic 400 JOD
     await createContract(adminUser, {
       employeeId: testEmpId,
-      contractType: 'PERMANENT',
       startDate: '2026-01-01',
       monthlyBasic: 400,
       monthlyAllowances: 0,

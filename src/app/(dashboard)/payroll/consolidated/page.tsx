@@ -22,7 +22,7 @@ export default async function ConsolidatedPayrollPage({
   }
 
   const resolvedParams = await searchParams;
-  const currentMonth = resolvedParams.month || new Date().toISOString().slice(0, 7);
+  const currentMonth = resolvedParams.month || '2026-10';
 
   const payrolls = await getPayrolls(user, { month: currentMonth });
 
@@ -111,14 +111,24 @@ export default async function ConsolidatedPayrollPage({
   return (
     <div className="min-h-screen bg-slate-100 py-6 px-4 flex flex-col items-center print:bg-white print:p-0 print:m-0 print:block">
       {/* Action Bar */}
-      <div className="w-full max-w-[1400px] flex justify-between items-center mb-4 no-print">
-        <Link
-          href="/payroll"
-          className="text-sm font-semibold text-[#2169A6] hover:text-[#1B5587] flex items-center"
-        >
-          <ArrowRight className="w-4 h-4 ml-1.5" />
-          العودة لقائمة المسيرات
-        </Link>
+      <div className="w-full max-w-[1400px] flex flex-wrap justify-between items-center mb-4 gap-2 no-print">
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/payroll?month=${currentMonth}`}
+            className="text-sm font-semibold text-[#2169A6] hover:text-[#1B5587] flex items-center"
+          >
+            <ArrowRight className="w-4 h-4 ml-1.5" />
+            العودة لقائمة المسيرات
+          </Link>
+          <span className="text-slate-400">|</span>
+          <Link
+            href={`/payroll/adjustments?month=${currentMonth}`}
+            className="win-btn text-xs font-bold px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 shadow-sm"
+          >
+            <span>⚡</span>
+            <span>إعداد ومراجعة متغيرات الرواتب</span>
+          </Link>
+        </div>
 
         {['ADMIN'].includes(user.role) && (
           <SaveMonthlyStatementModal
@@ -132,6 +142,7 @@ export default async function ConsolidatedPayrollPage({
 
       <div className="w-full max-w-[1400px] print:max-w-full print:w-full">
         <ConsolidatedPayrollSheet
+          key={currentMonth}
           periodMonth={currentMonth}
           rows={rows}
           initialType={(resolvedParams.type as any) || 'ALL'}
