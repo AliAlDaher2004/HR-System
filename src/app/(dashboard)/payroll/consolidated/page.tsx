@@ -60,7 +60,7 @@ export default async function ConsolidatedPayrollPage({
     const otherDeductions = Number(p.otherDeductions || 0);
 
     const totalDeductions = socialSecurity + loans + unpaidDeduction + earlyDepartureDeduction + lateDeduction + otherDeductions;
-    const netPay = p.netPay ? Number(p.netPay) : grossPay - totalDeductions;
+    const netPay = Math.round((grossPay - totalDeductions) * 1000) / 1000;
 
     return {
       id: p.id,

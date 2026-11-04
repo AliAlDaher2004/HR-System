@@ -88,11 +88,14 @@ export async function getPayrollRegisterReport(actor: UserSession, month: string
       dailyRate: parseFloat(r.dailyRate || '0'),
       basicEarned: parseFloat(r.basicEarned || '0'),
       allowancesEarned: parseFloat(r.allowancesEarned || '0'),
+      deliveryAllowance: parseFloat(r.deliveryAllowance || '0'),
+      gratuities: parseFloat(r.gratuities || '0'),
       otHours: parseFloat(r.otHours || '0'),
       otRate: parseFloat(r.otRate || '0'),
       otherAdditions: parseFloat(r.otherAdditions || '0'),
       unpaidDays: parseFloat(r.unpaidDays || '0'),
       unpaidDayRate: parseFloat(r.unpaidDayRate || '0'),
+      socialSecurityRegistered: Boolean(r.socialSecurityRegistered),
       lateMinutes: r.lateMinutes,
       lateDeduction: parseFloat(r.lateDeduction || '0'),
       earlyDepartureMinutes: r.earlyDepartureMinutes,
@@ -101,7 +104,7 @@ export async function getPayrollRegisterReport(actor: UserSession, month: string
       loanDeduction: parseFloat(r.loanDeduction || '0'),
     });
 
-    const netFinal = r.netPay ? Number(r.netPay) : calc.netPreview;
+    const netFinal = calc.netPreview;
 
     return {
       ...r,

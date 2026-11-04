@@ -154,7 +154,7 @@ export async function getPayslipData(actor: UserSession, payrollId: string): Pro
     loanDeduction: calc.loanDeduction.toFixed(3),
     totalEarnings: totalEarnings.toFixed(3),
     totalDeductions: totalDeductions.toFixed(3),
-    netPay: record.netPay ? parseFloat(record.netPay).toFixed(3) : (totalEarnings - totalDeductions).toFixed(3),
+    netPay: (totalEarnings - totalDeductions).toFixed(3),
     status: record.status,
     approvedBy: approverName,
     approvedAt: record.approvedAt ? record.approvedAt.toISOString().slice(0, 10) : null,
@@ -265,9 +265,7 @@ export async function getBatchPayslipData(
     const totalEarnings = basicEarned + allowancesEarned + deliveryAllowance + gratuities + otTotal + otherAdditions;
     const totalDeductions = unpaidDeduction + lateDeduction + earlyDepartureDeduction + otherDeductions + loanDeduction + socialSecurityDeductionVal;
 
-    const netPayVal = record.netPay
-      ? parseFloat(record.netPay)
-      : Math.round((totalEarnings - totalDeductions) * 1000) / 1000;
+    const netPayVal = Math.round((totalEarnings - totalDeductions) * 1000) / 1000;
 
     const approverName = record.approvedBy ? userMap.get(record.approvedBy) || 'مدير النظام' : 'مدير النظام';
 

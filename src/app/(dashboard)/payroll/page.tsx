@@ -99,7 +99,7 @@ export default async function PayrollPage({
 
     const otherDeductionsVal = Number(p.otherDeductions || 0);
     const totalDeductionsVal = socialSecurityVal + loansVal + unpaidDeductionVal + earlyDepartureDeductionVal + lateDeductionVal + otherDeductionsVal;
-    const netVal = p.netPay ? Number(p.netPay) : (p.netPreview ? Number(p.netPreview) : grossPayVal - totalDeductionsVal);
+    const netVal = Math.round((grossPayVal - totalDeductionsVal) * 1000) / 1000;
 
     totalBasicEarned += basicEarnedVal;
     totalTransport += transportVal;
@@ -466,7 +466,7 @@ export default async function PayrollPage({
 
                 const otherDeductionsVal = Number(p.otherDeductions || 0);
                 const totalDeductionsVal = socialSecurityVal + loansVal + unpaidDeductionVal + earlyDepartureDeductionVal + lateDeductionVal + otherDeductionsVal;
-                const netVal = p.netPay ? Number(p.netPay) : (p.netPreview ? Number(p.netPreview) : grossPayVal - totalDeductionsVal);
+                const netVal = Math.round((grossPayVal - totalDeductionsVal) * 1000) / 1000;
 
                 return (
                   <tr key={p.id} className="hover:bg-[#E8EEF7] divide-x divide-x-reverse divide-slate-200 group">

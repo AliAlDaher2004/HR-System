@@ -241,12 +241,23 @@ export async function getPayrolls(
       loanDeduction: parseFloat(p.loanDeduction || '0'),
     });
 
+    const correctNetPay = calc.netPreview.toFixed(3);
+
+    // Auto-heal remote DB if frozen netPay differs from computed netPay
+    if (p.netPay && p.netPay !== correctNetPay && (p.status === 'APPROVED' || p.status === 'PAID')) {
+      db.update(schema.payroll)
+        .set({ netPay: correctNetPay })
+        .where(eq(schema.payroll.id, p.id))
+        .catch(() => {});
+    }
+
     return {
       ...p,
       deliveryAllowance: calc.deliveryAllowance.toFixed(3),
       grossPay: calc.grossPay.toFixed(3),
       totalDeductions: calc.totalDeductions.toFixed(3),
-      netPreview: calc.netPreview.toFixed(3),
+      netPay: correctNetPay,
+      netPreview: correctNetPay,
       otTotal: calc.otTotal.toFixed(3),
       unpaidDeduction: calc.unpaidDeduction.toFixed(3),
       dailyEarnings: calc.dailyEarnings.toFixed(3),
@@ -327,12 +338,22 @@ export async function getPayrollById(actor: UserSession, payrollId: string) {
     loanDeduction: parseFloat(record.loanDeduction || '0'),
   });
 
+  const correctNetPay = calc.netPreview.toFixed(3);
+
+  if (record.netPay && record.netPay !== correctNetPay && (record.status === 'APPROVED' || record.status === 'PAID')) {
+    db.update(schema.payroll)
+      .set({ netPay: correctNetPay })
+      .where(eq(schema.payroll.id, record.id))
+      .catch(() => {});
+  }
+
   return {
     ...record,
     deliveryAllowance: calc.deliveryAllowance.toFixed(3),
     grossPay: calc.grossPay.toFixed(3),
     totalDeductions: calc.totalDeductions.toFixed(3),
-    netPreview: calc.netPreview.toFixed(3),
+    netPay: correctNetPay,
+    netPreview: correctNetPay,
     otTotal: calc.otTotal.toFixed(3),
     unpaidDeduction: calc.unpaidDeduction.toFixed(3),
     dailyEarnings: calc.dailyEarnings.toFixed(3),
@@ -1018,11 +1039,14 @@ export async function validatePayrollCompleteness(payrollId: string): Promise<{
     dailyRate: parseFloat(payrollRecord.dailyRate || '0'),
     basicEarned: parseFloat(payrollRecord.basicEarned || '0'),
     allowancesEarned: parseFloat(payrollRecord.allowancesEarned || '0'),
+    deliveryAllowance: parseFloat(payrollRecord.deliveryAllowance || '0'),
+    gratuities: parseFloat(payrollRecord.gratuities || '0'),
     otHours: parseFloat(payrollRecord.otHours || '0'),
     otRate: parseFloat(payrollRecord.otRate || '0'),
     otherAdditions: parseFloat(payrollRecord.otherAdditions || '0'),
     unpaidDays: parseFloat(payrollRecord.unpaidDays || '0'),
     unpaidDayRate: parseFloat(payrollRecord.unpaidDayRate || '0'),
+    socialSecurityRegistered: Boolean(emp.socialSecurityRegistered),
     lateMinutes: payrollRecord.lateMinutes,
     lateDeduction: parseFloat(payrollRecord.lateDeduction || '0'),
     earlyDepartureMinutes: payrollRecord.earlyDepartureMinutes,
@@ -1085,11 +1109,14 @@ export async function approvePayroll(actor: UserSession, payrollId: string) {
     dailyRate: parseFloat(payrollRecord.dailyRate || '0'),
     basicEarned: parseFloat(payrollRecord.basicEarned || '0'),
     allowancesEarned: parseFloat(payrollRecord.allowancesEarned || '0'),
+    deliveryAllowance: parseFloat(payrollRecord.deliveryAllowance || '0'),
+    gratuities: parseFloat(payrollRecord.gratuities || '0'),
     otHours: parseFloat(payrollRecord.otHours || '0'),
     otRate: parseFloat(payrollRecord.otRate || '0'),
     otherAdditions: parseFloat(payrollRecord.otherAdditions || '0'),
     unpaidDays: parseFloat(payrollRecord.unpaidDays || '0'),
     unpaidDayRate: parseFloat(payrollRecord.unpaidDayRate || '0'),
+    socialSecurityRegistered: Boolean(emp?.socialSecurityRegistered),
     lateMinutes: payrollRecord.lateMinutes,
     lateDeduction: parseFloat(payrollRecord.lateDeduction || '0'),
     earlyDepartureMinutes: payrollRecord.earlyDepartureMinutes,
@@ -1396,6 +1423,32 @@ export async function updatePayrollDraft(
   const autoLoanDeduction = await syncEmployeeLoanRepaymentsForPayroll(db, payrollRecord.employeeId, data.payrollId, payrollRecord.periodEnd, actor.id);
   const totalLoanDeduction = data.loanDeduction !== undefined ? data.loanDeduction : autoLoanDeduction;
 
+  const calc = computeNetPayroll({
+    employmentType: emp?.employmentType || 'PERMANENT',
+    workedDays: payrollRecord.workedDays,
+    dailyRate: parseFloat(payrollRecord.dailyRate || '0'),
+    basicEarned: updatedBasicEarned,
+    allowancesEarned: updatedAllowancesEarned,
+    deliveryAllowance: updatedDeliveryAllowance,
+    gratuities: updatedGratuities,
+    otHours: updatedOtHours,
+    otRate,
+    otherAdditions: updatedOtherAdditions,
+    unpaidDays: updatedUnpaidDays,
+    unpaidDayRate,
+    socialSecurityRegistered: Boolean(emp?.socialSecurityRegistered),
+    lateMinutes: updatedLateMinutes,
+    lateDeduction,
+    earlyDepartureMinutes: updatedEarlyDepartureMinutes,
+    earlyDepartureDeduction,
+    otherDeductions: updatedOtherDeductions,
+    loanDeduction: totalLoanDeduction,
+  });
+
+  const updatedNetPay = (payrollRecord.status === 'APPROVED' || payrollRecord.status === 'PAID' || payrollRecord.netPay !== null)
+    ? calc.netPreview.toFixed(3)
+    : null;
+
   const [updated] = await db.update(schema.payroll)
     .set({
       basicEarned: updatedBasicEarned.toFixed(3),
@@ -1413,6 +1466,7 @@ export async function updatePayrollDraft(
       earlyDepartureDeduction: earlyDepartureDeduction.toFixed(3),
       otHours: updatedOtHours.toFixed(2),
       otRate: otRate.toFixed(3),
+      netPay: updatedNetPay,
       notes: updatedNotes || null,
       updatedBy: actor.id,
       updatedAt: new Date(),
