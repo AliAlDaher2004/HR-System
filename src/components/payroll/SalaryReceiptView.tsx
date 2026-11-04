@@ -5,32 +5,42 @@ import { PayslipData } from '@/lib/services/payslip-service';
 
 export function SmartLinesHeader() {
   return (
-    <div className="w-full pb-3 border-b-2 border-slate-900">
+    <div className="w-full pb-1.5 mb-1.5 border-b border-slate-800">
       <div className="flex justify-between items-center">
         {/* Left Side: Smart Lines Logo */}
         <div className="flex flex-col items-start" dir="ltr">
           <div className="flex items-baseline space-x-1 font-sans">
-            <span className="text-3xl md:text-4xl font-black text-[#0088CC] tracking-tight">SMART</span>
+            <span className="text-xl md:text-2xl font-black text-[#0088CC] tracking-tight leading-none">SMART</span>
           </div>
-          <div className="flex items-center space-x-2 mt-[-6px]">
-            <span className="text-xl md:text-2xl font-extrabold text-[#0088CC] tracking-widest">LINES</span>
-            <div className="flex flex-col space-y-[3px] w-14">
-              <div className="h-[3px] bg-[#C59B27] w-full rounded-full" />
-              <div className="h-[3px] bg-[#C59B27] w-full rounded-full" />
-              <div className="h-[3px] bg-[#C59B27] w-full rounded-full" />
+          <div className="flex items-center space-x-1 mt-[-2px]">
+            <span className="text-xs md:text-sm font-extrabold text-[#0088CC] tracking-widest leading-none">LINES</span>
+            <div className="flex flex-col space-y-[2px] w-8">
+              <div className="h-[2px] bg-[#C59B27] w-full rounded-full" />
+              <div className="h-[2px] bg-[#C59B27] w-full rounded-full" />
+              <div className="h-[2px] bg-[#C59B27] w-full rounded-full" />
             </div>
           </div>
         </div>
 
+        {/* Center: Title */}
+        <div className="text-center">
+          <h2 className="text-sm md:text-base font-black text-slate-900 border-b-2 border-blue-900 pb-0.5 px-3">
+            سند استلام راتب
+          </h2>
+          <span className="text-[8.5px] text-slate-600 font-bold block mt-0.5">
+            قسيمة الأجر الشهري الرسمية
+          </span>
+        </div>
+
         {/* Right Side: Arabic & English Company Name */}
         <div className="text-right" dir="rtl">
-          <h1 className="text-lg md:text-xl font-bold text-slate-800 tracking-tight">
+          <h1 className="text-xs md:text-sm font-bold text-slate-900 tracking-tight leading-tight">
             شركة الخطوط الأذكى لصناعة المنظفات
           </h1>
-          <h2 className="text-xs md:text-sm font-extrabold text-slate-700 tracking-wide mt-0.5" dir="ltr">
-            SMART LINES DETERGENT MANUFACTURING CO
+          <h2 className="text-[8px] font-extrabold text-slate-600 tracking-wide" dir="ltr">
+            SMART LINES DETERGENT MFG CO
           </h2>
-          <span className="text-xs md:text-sm font-bold text-[#0088CC] block mt-0.5">
+          <span className="text-[8px] font-bold text-[#0088CC] block">
             ذات مسؤولية محدودة
           </span>
         </div>
@@ -51,183 +61,191 @@ export function SalaryReceiptView({ payslip }: { payslip: PayslipData }) {
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto bg-white p-6 md:p-8 text-slate-900 border border-slate-300 shadow-md font-sans" dir="rtl">
+    <div className="payslip-card w-full max-w-3xl mx-auto bg-white p-2.5 md:p-3 text-slate-900 border border-slate-300 font-sans select-none text-[9px] md:text-[9.5px] leading-tight" dir="rtl">
       {/* 1. Header */}
       <SmartLinesHeader />
 
-      {/* 2. Document Title */}
-      <div className="text-center my-4">
-        <h2 className="text-lg font-bold text-slate-900">سند استلام راتب</h2>
-        {payslip.status === 'DRAFT' && (
-          <span className="inline-block mt-1 text-[11px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded no-print">
-            ⚠️ مسودة كشف راتب (غير معتمد بعد)
-          </span>
-        )}
-      </div>
-
-      {/* 3. Metadata Table Grid */}
-      <div className="border border-slate-400 text-xs mb-6 divide-y divide-slate-300">
-        {/* Row 1: Employee No & Social Security Rate */}
-        <div className="grid grid-cols-2 divide-x divide-x-reverse divide-slate-300 bg-slate-50 p-2 items-center">
-          <div className="flex justify-between items-center px-2">
+      {/* 2. Compact Metadata Table Grid (2 Rows) */}
+      <div className="border border-slate-400 text-[8.5px] md:text-[9px] mb-2 divide-y divide-slate-300 rounded-sm overflow-hidden">
+        {/* Row 1: Employee No, Name, Period, Social Security */}
+        <div className="grid grid-cols-4 divide-x divide-x-reverse divide-slate-300 bg-slate-50 p-1 items-center">
+          <div className="px-1.5 flex items-center justify-between">
             <span className="font-bold text-slate-700">الرقم الوظيفي:</span>
-            <span className="font-mono font-bold text-sm bg-white px-3 py-0.5 border border-slate-400 rounded">
+            <span className="font-mono font-bold text-[10px] bg-white px-1.5 py-0.2 border border-slate-400 rounded">
               {payslip.employeeNo}
             </span>
           </div>
-          <div className="flex justify-between items-center px-2">
-            <span className="font-bold text-slate-700">نسبة تحمل الضمان الاجتماعي:</span>
+          <div className="px-1.5 col-span-1 truncate">
+            <span className="font-bold text-slate-700 ml-1">الاسم:</span>
+            <span className="font-black text-slate-900">{payslip.employeeName}</span>
+          </div>
+          <div className="px-1.5 flex items-center justify-between">
+            <span className="font-bold text-slate-700">الفترة:</span>
+            <span className="font-mono text-[8px] font-semibold">{payslip.periodStart} إلى {payslip.periodEnd}</span>
+          </div>
+          <div className="px-1.5 flex items-center justify-between">
+            <span className="font-bold text-slate-700">نسبة الضمان:</span>
             <span className="font-mono font-bold">{payslip.socialSecurityRate || '0.00%'}</span>
           </div>
         </div>
 
-        {/* Row 2: Period & Worked Days */}
-        <div className="grid grid-cols-2 divide-x divide-x-reverse divide-slate-300 bg-white p-2 items-center">
-          <div className="flex items-center space-x-2 space-x-reverse px-2">
-            <span className="font-bold text-slate-700">الفترة من:</span>
-            <span className="font-mono">{payslip.periodStart}</span>
-            <span className="font-bold text-slate-700">الى:</span>
-            <span className="font-mono">{payslip.periodEnd}</span>
-          </div>
-          <div className="flex justify-between items-center px-2">
+        {/* Row 2: Worked Days, National ID, Insurance No, Status */}
+        <div className="grid grid-cols-4 divide-x divide-x-reverse divide-slate-300 bg-white p-1 items-center">
+          <div className="px-1.5 flex items-center justify-between">
             <span className="font-bold text-slate-700">أيام الدوام:</span>
-            <span className="font-mono font-bold">{payslip.workedDays}</span>
+            <span className="font-mono font-bold text-[10px]">{payslip.workedDays}</span>
           </div>
-        </div>
-
-        {/* Row 3: Employee Name, Insurance No, National ID */}
-        <div className="grid grid-cols-3 divide-x divide-x-reverse divide-slate-300 bg-slate-50 p-2 items-center">
-          <div className="px-2">
-            <span className="font-bold text-slate-700 ml-1">الاسم:</span>
-            <span className="font-bold text-slate-900">{payslip.employeeName}</span>
+          <div className="px-1.5 flex items-center justify-between">
+            <span className="font-bold text-slate-700">رقم الهوية:</span>
+            <span className="font-mono font-semibold">{payslip.nationalId || '-'}</span>
           </div>
-          <div className="px-2 text-center">
-            <span className="font-bold text-slate-700 ml-1">رقم التأمين:</span>
-            <span className="font-mono">{payslip.insuranceNo || '0'}</span>
+          <div className="px-1.5 flex items-center justify-between">
+            <span className="font-bold text-slate-700">رقم التأمين:</span>
+            <span className="font-mono font-semibold">{payslip.insuranceNo || '-'}</span>
           </div>
-          <div className="px-2 text-left">
-            <span className="font-bold text-slate-700 ml-1">رقم الهوية:</span>
-            <span className="font-mono">{payslip.nationalId || '0'}</span>
+          <div className="px-1.5 flex items-center justify-between">
+            <span className="font-bold text-slate-700">الحالة:</span>
+            <span className="font-bold text-blue-950">
+              {payslip.status === 'APPROVED' ? 'معتمد' : payslip.status === 'PAID' ? 'مدفوع' : 'مسودة'}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* 4. Two-Column Itemized Additions & Deductions Tables */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+      {/* 3. Two-Column Itemized Additions & Deductions Tables */}
+      <div className="grid grid-cols-2 gap-2 text-[8.5px] md:text-[9px]">
         {/* Additions Table (Right side in RTL) */}
         <div className="border border-slate-400 rounded-sm overflow-hidden flex flex-col justify-between">
           <div>
-            <div className="bg-[#1D4ED8] text-white py-2 px-3 font-bold text-center text-sm">
+            <div className="bg-[#1D4ED8] text-white py-0.5 px-2 font-bold text-center text-[10px]">
               الإضافات
             </div>
             <table className="w-full text-right divide-y divide-slate-200">
               <tbody className="divide-y divide-slate-200">
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">الراتب الأساسي</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.basicEarned)}</td>
+                  <td className="py-0.5 px-2 text-slate-800">الراتب الأساسي</td>
+                  <td className="py-0.5 px-2 font-mono text-left font-semibold">{formatVal(payslip.basicEarned)}</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">مكافأة مواصلات أيام عمل</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.allowancesEarned)}</td>
+                  <td className="py-0.5 px-2 text-slate-800">مكافأة مواصلات أيام عمل</td>
+                  <td className="py-0.5 px-2 font-mono text-left">{formatVal(payslip.allowancesEarned)}</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">بدل توصيل</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.deliveryAllowance)}</td>
+                  <td className="py-0.5 px-2 text-slate-800">بدل توصيل</td>
+                  <td className="py-0.5 px-2 font-mono text-left">{formatVal(payslip.deliveryAllowance)}</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">اكراميات</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.tipsGratuities)}</td>
+                  <td className="py-0.5 px-2 text-slate-800">اكراميات</td>
+                  <td className="py-0.5 px-2 font-mono text-left font-bold text-emerald-800">{formatVal(payslip.tipsGratuities)}</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">اضافات اخرى</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.otherAdditions)}</td>
+                  <td className="py-0.5 px-2 text-slate-800">اضافات اخرى</td>
+                  <td className="py-0.5 px-2 font-mono text-left">{formatVal(payslip.otherAdditions)}</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">ساعات عمل إضافي</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{payslip.otHours && Number(payslip.otHours) > 0 ? payslip.otHours : '-'}</td>
+                  <td className="py-0.5 px-2 text-slate-800">ساعات عمل إضافي</td>
+                  <td className="py-0.5 px-2 font-mono text-left">{payslip.otHours && Number(payslip.otHours) > 0 ? payslip.otHours : '-'}</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">بدل إضافي</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.otTotal)}</td>
+                  <td className="py-0.5 px-2 text-slate-800">بدل إضافي</td>
+                  <td className="py-0.5 px-2 font-mono text-left">{formatVal(payslip.otTotal)}</td>
+                </tr>
+                {/* Spacer rows to balance the 9 rows of deductions */}
+                <tr className="text-slate-300">
+                  <td className="py-0.5 px-2">-</td>
+                  <td className="py-0.5 px-2 text-left">-</td>
+                </tr>
+                <tr className="text-slate-300">
+                  <td className="py-0.5 px-2">-</td>
+                  <td className="py-0.5 px-2 text-left">-</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <div className="bg-[#1D4ED8] text-white py-2 px-3 font-bold flex justify-between items-center text-sm border-t border-slate-400">
+          <div className="bg-[#1D4ED8] text-white py-0.5 px-2 font-bold flex justify-between items-center text-[9.5px] border-t border-slate-400">
             <span>اجمالي الإضافات (الراتب الإجمالي)</span>
-            <span className="font-mono">{parseFloat(payslip.totalEarnings).toFixed(2)}</span>
+            <span className="font-mono font-black">{parseFloat(payslip.totalEarnings).toFixed(2)}</span>
           </div>
         </div>
 
         {/* Deductions Table (Left side in RTL) */}
         <div className="border border-slate-400 rounded-sm overflow-hidden flex flex-col justify-between">
           <div>
-            <div className="bg-[#1D4ED8] text-white py-2 px-3 font-bold text-center text-sm">
+            <div className="bg-[#1D4ED8] text-white py-0.5 px-2 font-bold text-center text-[10px]">
               الخصومات
             </div>
             <table className="w-full text-right divide-y divide-slate-200">
               <tbody className="divide-y divide-slate-200">
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">ضمان اجتماعي</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.socialSecurityDeduction)}</td>
+                  <td className="py-0.5 px-2 text-slate-800">ضمان اجتماعي</td>
+                  <td className="py-0.5 px-2 font-mono text-left">{formatVal(payslip.socialSecurityDeduction)}</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">السلف</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.loanDeduction)}</td>
+                  <td className="py-0.5 px-2 text-slate-800">السلف</td>
+                  <td className="py-0.5 px-2 font-mono text-left">{formatVal(payslip.loanDeduction)}</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">عدد أيام الغياب</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{payslip.unpaidDays && Number(payslip.unpaidDays) > 0 ? payslip.unpaidDays : '-'}</td>
+                  <td className="py-0.5 px-2 text-slate-800">عدد أيام الغياب</td>
+                  <td className="py-0.5 px-2 font-mono text-left">{payslip.unpaidDays && Number(payslip.unpaidDays) > 0 ? payslip.unpaidDays : '-'}</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">خصم الغياب</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.unpaidDeduction)}</td>
+                  <td className="py-0.5 px-2 text-slate-800">خصم الغياب</td>
+                  <td className="py-0.5 px-2 font-mono text-left">{formatVal(payslip.unpaidDeduction)}</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">ساعات مغادرة</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{payslip.earlyDepartureHours && Number(payslip.earlyDepartureHours) > 0 ? payslip.earlyDepartureHours : '-'}</td>
+                  <td className="py-0.5 px-2 text-slate-800">ساعات مغادرة</td>
+                  <td className="py-0.5 px-2 font-mono text-left">{payslip.earlyDepartureHours && Number(payslip.earlyDepartureHours) > 0 ? payslip.earlyDepartureHours : '-'}</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">خصم مغادرة</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.earlyDepartureDeduction)}</td>
+                  <td className="py-0.5 px-2 text-slate-800">خصم مغادرة</td>
+                  <td className="py-0.5 px-2 font-mono text-left">{formatVal(payslip.earlyDepartureDeduction)}</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">ساعات التأخير</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{payslip.lateHours && Number(payslip.lateHours) > 0 ? payslip.lateHours : '-'}</td>
+                  <td className="py-0.5 px-2 text-slate-800">ساعات التأخير</td>
+                  <td className="py-0.5 px-2 font-mono text-left">{payslip.lateHours && Number(payslip.lateHours) > 0 ? payslip.lateHours : '-'}</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">خصم تأخير</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.lateDeduction)}</td>
+                  <td className="py-0.5 px-2 text-slate-800">خصم تأخير</td>
+                  <td className="py-0.5 px-2 font-mono text-left">{formatVal(payslip.lateDeduction)}</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 px-3 text-slate-800">خصومات أخرى</td>
-                  <td className="py-1.5 px-3 font-mono text-left">{formatVal(payslip.otherDeductions)}</td>
+                  <td className="py-0.5 px-2 text-slate-800">خصومات أخرى</td>
+                  <td className="py-0.5 px-2 font-mono text-left">{formatVal(payslip.otherDeductions)}</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <div className="bg-[#1D4ED8] text-white py-2 px-3 font-bold flex justify-between items-center text-sm border-t border-slate-400">
+          <div className="bg-[#1D4ED8] text-white py-0.5 px-2 font-bold flex justify-between items-center text-[9.5px] border-t border-slate-400">
             <span>اجمالي الخصومات</span>
-            <span className="font-mono">{parseFloat(payslip.totalDeductions).toFixed(2)}</span>
+            <span className="font-mono font-black">{parseFloat(payslip.totalDeductions).toFixed(2)}</span>
           </div>
         </div>
       </div>
 
-      {/* 5. Net Payable Block (Aligned with right additions column in RTL) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 text-xs">
-        <div className="bg-[#0A246A] text-white py-2.5 px-4 font-bold rounded-sm flex justify-between items-center text-sm">
-          <span>اجمالي الراتب المستحق (الصافي النهائي)</span>
-          <span className="font-mono text-base font-black">{parseFloat(payslip.netPay).toFixed(2)}</span>
+      {/* 4. Combined Net Payable & Signatures Bar */}
+      <div className="mt-2 pt-1 border-t border-slate-400 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 text-[9px]">
+        {/* Net Pay Badge */}
+        <div className="bg-[#0A246A] text-white py-1 px-3 rounded flex items-center justify-between sm:justify-start gap-2 font-bold shadow-sm whitespace-nowrap">
+          <span>اجمالي الراتب المستحق (الصافي النهائي):</span>
+          <span className="font-mono text-xs font-black text-amber-300">
+            {parseFloat(payslip.netPay).toFixed(2)} د.أ
+          </span>
         </div>
-        <div />
-      </div>
 
-      {/* 6. Footer Signatures Section */}
-      <div className="mt-12 pt-4 border-t-2 border-slate-900 text-xs text-slate-800">
-        <div className="grid grid-cols-3 text-center font-bold">
-          <div>المستلم</div>
-          <div>المحاسب</div>
-          <div>الإدارة</div>
+        {/* Signatures */}
+        <div className="flex-1 flex justify-around items-center border border-slate-300 bg-slate-50 py-1 px-2 rounded font-bold text-slate-800">
+          <div className="flex items-center gap-1">
+            <span>المستلم:</span>
+            <span className="inline-block w-14 border-b border-dotted border-slate-600" />
+          </div>
+          <div className="flex items-center gap-1">
+            <span>المحاسب:</span>
+            <span className="inline-block w-14 border-b border-dotted border-slate-600" />
+          </div>
+          <div className="flex items-center gap-1">
+            <span>الإدارة:</span>
+            <span className="inline-block w-14 border-b border-dotted border-slate-600" />
+          </div>
         </div>
       </div>
     </div>
