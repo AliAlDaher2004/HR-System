@@ -995,6 +995,28 @@ export async function refreshPayrollDraft(actor: UserSession, payrollId: string)
     otRate = Math.round(calculatedOtRate * 1000) / 1000;
   }
 
+  const calc = computeNetPayroll({
+    employmentType: emp?.employmentType || 'PERMANENT',
+    workedDays,
+    dailyRate,
+    basicEarned,
+    allowancesEarned,
+    deliveryAllowance: parseFloat(payrollRecord.deliveryAllowance || '0'),
+    gratuities: parseFloat(payrollRecord.gratuities || '0'),
+    otHours: totalOtHours,
+    otRate,
+    otherAdditions: parseFloat(payrollRecord.otherAdditions || '0'),
+    unpaidDays: totalUnpaidDays,
+    unpaidDayRate,
+    socialSecurityRegistered: Boolean(emp?.socialSecurityRegistered),
+    lateMinutes,
+    lateDeduction,
+    earlyDepartureMinutes,
+    earlyDepartureDeduction,
+    otherDeductions: parseFloat(payrollRecord.otherDeductions || '0'),
+    loanDeduction: totalLoanDeduction,
+  });
+
   const [updated] = await db.update(schema.payroll)
     .set({
       basicEarned: basicEarned.toFixed(3),
@@ -1010,6 +1032,7 @@ export async function refreshPayrollDraft(actor: UserSession, payrollId: string)
       unpaidDays: totalUnpaidDays.toFixed(2),
       unpaidDayRate: unpaidDayRate.toFixed(3),
       loanDeduction: totalLoanDeduction.toFixed(3),
+      netPay: calc.netPreview.toFixed(3),
       updatedBy: actor.id,
       updatedAt: new Date(),
     })
