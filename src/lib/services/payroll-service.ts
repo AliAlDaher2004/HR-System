@@ -40,6 +40,94 @@ export function isLegacyOtRate(rate: number): boolean {
   return false;
 }
 
+/**
+ * Calculates payable service days for an employee during a payroll month,
+ * enforcing the business rule:
+ * For any Friday (weekly rest day) to be paid, the employee must have worked
+ * at least 6 workdays (Saturday through Thursday) in the work cycle leading to that Friday.
+ * If a new employee starts mid-month or towards the end of the month with fewer than 6 workdays
+ * prior to a Friday, that Friday is UNPAID (excluded from basic salary days).
+ */
+export function calculatePayableServiceDays(
+  startDateStr: string,
+  endDateStr: string | null | undefined,
+  periodStartStr: string,
+  periodEndStr: string
+): {
+  payableDays: number;
+  actualWorkDays: number;
+  paidFridays: number;
+  unpaidFridays: number;
+} {
+  const effectiveStartStr = startDateStr > periodStartStr ? startDateStr : periodStartStr;
+  const effectiveEndStr = endDateStr && endDateStr < periodEndStr ? endDateStr : periodEndStr;
+
+  const isNewMidMonthHire = startDateStr > periodStartStr;
+  const isPartialMonth = effectiveStartStr > periodStartStr || Boolean(endDateStr && endDateStr < periodEndStr);
+
+  // If established employee working the full month, standard 30 days
+  if (!isPartialMonth) {
+    return {
+      payableDays: 30,
+      actualWorkDays: 26,
+      paidFridays: 4,
+      unpaidFridays: 0,
+    };
+  }
+
+  // Parse YYYY-MM-DD cleanly using local midday to prevent timezone/DST jitter
+  const parseYMD = (s: string) => {
+    const [y, m, d] = s.split('-').map(Number);
+    return new Date(y, m - 1, d, 12, 0, 0);
+  };
+
+  const cur = parseYMD(effectiveStartStr);
+  const end = parseYMD(effectiveEndStr);
+
+  let payableDays = 0;
+  let actualWorkDays = 0;
+  let paidFridays = 0;
+  let unpaidFridays = 0;
+  // If employee started mid-month (startDate > periodStart), cycle starts at 0.
+  // If employed since periodStart, pre-period continuity qualifies their first Friday.
+  let workDaysInCycle = isNewMidMonthHire ? 0 : 6;
+
+  while (cur <= end) {
+    const dayOfWeek = cur.getDay(); // 0 = Sun, 1 = Mon, ..., 5 = Fri, 6 = Sat
+
+    if (dayOfWeek === 5) {
+      // Friday: check if employee qualified with at least 6 workdays in this work cycle
+      if (workDaysInCycle >= 6) {
+        payableDays++;
+        paidFridays++;
+      } else {
+        // Less than 6 days worked before this Friday -> Friday is UNPAID
+        unpaidFridays++;
+      }
+      // Reset work cycle after Friday
+      workDaysInCycle = 0;
+    } else {
+      // Workday (Saturday, Sunday, Monday, Tuesday, Wednesday, Thursday)
+      payableDays++;
+      actualWorkDays++;
+      workDaysInCycle++;
+    }
+
+    // Advance 1 day
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  // Cap at 30 days maximum per standard month
+  payableDays = Math.min(30, payableDays);
+
+  return {
+    payableDays,
+    actualWorkDays,
+    paidFridays,
+    unpaidFridays,
+  };
+}
+
 export function computeNetPayroll(values: {
   employmentType?: 'PERMANENT' | 'PROBATIONARY' | 'DAILY_WORKER';
   workedDays?: number;
@@ -610,17 +698,12 @@ export async function createPayrollDraft(
     const isPartialMonth = effectiveStart > periodStart || Boolean(emp.endDate && emp.endDate < periodEnd);
 
     const fullMonthlyBasic = parseFloat(activeContract.monthlyBasic);
-    let activeServiceDays = 30;
-    if (isPartialMonth) {
-      const startMs = new Date(effectiveStart).getTime();
-      const endMs = new Date(effectiveEnd).getTime();
-      activeServiceDays = Math.max(0, Math.min(30, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1));
-    }
+    const payableMetrics = calculatePayableServiceDays(emp.startDate, emp.endDate, periodStart, periodEnd);
 
     if (data.basicEarned !== undefined) {
       basicEarned = data.basicEarned;
     } else if (isPartialMonth) {
-      basicEarned = Math.round((fullMonthlyBasic / 30) * activeServiceDays * 1000) / 1000;
+      basicEarned = Math.round((fullMonthlyBasic / 30) * payableMetrics.payableDays * 1000) / 1000;
     } else {
       basicEarned = fullMonthlyBasic;
     }
@@ -683,11 +766,8 @@ export async function createPayrollDraft(
     if (data.allowancesEarned !== undefined) {
       allowancesEarned = data.allowancesEarned;
     } else if (isPartialMonth) {
-      const startMs = new Date(effectiveStart).getTime();
-      const endMs = new Date(effectiveEnd).getTime();
-      const activeServiceDays = Math.max(0, Math.min(30, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1));
-      const proratedAllowances = Math.round(dailyAllowanceRate * activeServiceDays * 1000) / 1000;
-      allowancesEarned = Math.max(0, proratedAllowances - (totalUnpaidDays * dailyAllowanceRate));
+      const payableMetrics = calculatePayableServiceDays(emp.startDate, emp.endDate, periodStart, periodEnd);
+      allowancesEarned = Math.max(0, payableMetrics.payableDays - totalUnpaidDays);
     } else {
       allowancesEarned = Math.max(0, fullMonthlyAllowances - (totalUnpaidDays * dailyAllowanceRate));
     }
@@ -868,12 +948,9 @@ export async function refreshPayrollDraft(actor: UserSession, payrollId: string)
       const isPartialMonth = effectiveStart > payrollRecord.periodStart || Boolean(emp.endDate && emp.endDate < payrollRecord.periodEnd);
 
       if (isPartialMonth) {
-        const startMs = new Date(effectiveStart).getTime();
-        const endMs = new Date(effectiveEnd).getTime();
-        const activeServiceDays = Math.max(0, Math.min(30, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1));
-        basicEarned = Math.round((fullMonthlyBasic / 30) * activeServiceDays * 1000) / 1000;
-        const proratedAllowances = Math.round(dailyAllowanceRate * activeServiceDays * 1000) / 1000;
-        allowancesEarned = Math.max(0, proratedAllowances - (totalUnpaidDays * dailyAllowanceRate));
+        const payableMetrics = calculatePayableServiceDays(emp.startDate, emp.endDate, payrollRecord.periodStart, payrollRecord.periodEnd);
+        basicEarned = Math.round((fullMonthlyBasic / 30) * payableMetrics.payableDays * 1000) / 1000;
+        allowancesEarned = Math.max(0, payableMetrics.payableDays - totalUnpaidDays);
       } else {
         basicEarned = fullMonthlyBasic;
         allowancesEarned = Math.max(0, fullMonthlyAllowances - (totalUnpaidDays * dailyAllowanceRate));
@@ -1401,10 +1478,13 @@ export async function updatePayrollDraft(
       const effectiveEnd = emp && emp.endDate && emp.endDate < payrollRecord.periodEnd ? emp.endDate : payrollRecord.periodEnd;
       const isPartial = effectiveStart > payrollRecord.periodStart || Boolean(emp?.endDate && emp.endDate < payrollRecord.periodEnd);
       if (isPartial) {
-        const startMs = new Date(effectiveStart).getTime();
-        const endMs = new Date(effectiveEnd).getTime();
-        const activeDays = Math.max(0, Math.min(30, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1));
-        updatedAllowancesEarned = Math.max(0, activeDays - updatedUnpaidDays);
+        const payableMetrics = calculatePayableServiceDays(
+          emp ? emp.startDate : payrollRecord.periodStart,
+          emp?.endDate,
+          payrollRecord.periodStart,
+          payrollRecord.periodEnd
+        );
+        updatedAllowancesEarned = Math.max(0, payableMetrics.payableDays - updatedUnpaidDays);
       } else {
         updatedAllowancesEarned = Math.max(0, 30 - updatedUnpaidDays);
       }
@@ -1785,11 +1865,14 @@ export async function getMonthlyPayrollAdjustmentSheet(
       allowancesEarned = 0;
     } else {
       if (isPartialMonth) {
-        const startMs = new Date(effectiveStart).getTime();
-        const endMs = new Date(effectiveEnd).getTime();
-        const activeDays = Math.max(0, Math.min(30, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1));
-        basicEarned = Math.round((fullMonthlyBasic / 30) * activeDays * 1000) / 1000;
-        allowancesEarned = Math.max(0, activeDays - unpaidDays);
+        const payableMetrics = calculatePayableServiceDays(
+          emp.startDate,
+          emp.endDate,
+          periodStart,
+          periodEnd
+        );
+        basicEarned = Math.round((fullMonthlyBasic / 30) * payableMetrics.payableDays * 1000) / 1000;
+        allowancesEarned = Math.max(0, payableMetrics.payableDays - unpaidDays);
       } else {
         basicEarned = fullMonthlyBasic;
         allowancesEarned = Math.max(0, 30 - unpaidDays);

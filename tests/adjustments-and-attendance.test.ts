@@ -14,6 +14,8 @@ import {
   getPayrollById,
   computeNetPayroll,
   approvePayroll,
+  calculatePayableServiceDays,
+  createPayrollDraft,
 } from '../src/lib/services/payroll-service';
 import { getPayslipData, getBatchPayslipData } from '../src/lib/services/payslip-service';
 import { saveBulkLoans, getLoans } from '../src/lib/services/loan-service';
@@ -491,5 +493,68 @@ describe('Daily Penalties, Delivery Allowances, and Monthly Payroll Adjustments'
     const updatedRowArch = updatedSheet09.rows.find((r) => r.employeeId === archEmp.id);
     expect(updatedRowArch?.payrollStatus).toBe('DRAFT');
     expect(updatedRowArch?.loanDeduction).toBe(60);
+  });
+
+  it('8. Enforces new hire Friday eligibility rule: must work at least 6 days before any Friday', async () => {
+    // Scenario A: Starts on Tuesday Oct 27, 2026 (Month ends Saturday Oct 31, 2026)
+    // Days: 27 (Tue), 28 (Wed), 29 (Thu), 30 (Fri), 31 (Sat) = 5 calendar days.
+    // Friday Oct 30 only had 3 workdays prior (< 6) -> Friday is unpaid -> payableDays = 4.
+    const resA = calculatePayableServiceDays('2026-10-27', null, '2026-10-01', '2026-10-31');
+    expect(resA.payableDays).toBe(4);
+    expect(resA.actualWorkDays).toBe(4);
+    expect(resA.unpaidFridays).toBe(1);
+    expect(resA.paidFridays).toBe(0);
+
+    // Scenario B: Starts on Saturday Oct 24, 2026 (Starts at beginning of work week)
+    // Days: Sat 24 to Thu 29 = 6 workdays -> Friday 30 qualifies! -> payableDays = 8 (7 workdays + 1 Friday)
+    const resB = calculatePayableServiceDays('2026-10-24', null, '2026-10-01', '2026-10-31');
+    expect(resB.payableDays).toBe(8);
+    expect(resB.actualWorkDays).toBe(7);
+    expect(resB.paidFridays).toBe(1);
+    expect(resB.unpaidFridays).toBe(0);
+
+    // Scenario C: Starts on Wednesday Oct 14, 2026 (Mid-month hire)
+    // Oct 16 Friday: only 2 workdays (Wed, Thu) -> unpaid (0)
+    // Oct 23 Friday: 6 workdays (Sat 17 - Thu 22) -> paid (1)
+    // Oct 30 Friday: 6 workdays (Sat 24 - Thu 29) -> paid (1)
+    // Sat 31: 1 workday
+    // Total payable: 2 + 0 + 7 + 7 + 1 = 17 days
+    const resC = calculatePayableServiceDays('2026-10-14', null, '2026-10-01', '2026-10-31');
+    expect(resC.payableDays).toBe(17);
+    expect(resC.unpaidFridays).toBe(1);
+    expect(resC.paidFridays).toBe(2);
+
+    // Scenario D: End-to-end payroll draft for a new hire starting Oct 27, 2026
+    const newHire = await createEmployee(adminUser, {
+      employeeNo: 'NEW-HIRE-01',
+      name: 'New Hire Friday Test',
+      department: 'Production',
+      jobTitle: 'Technician',
+      startDate: '2026-10-27',
+      employmentType: 'PERMANENT',
+    });
+
+    await createContract(adminUser, {
+      employeeId: newHire.id,
+      startDate: '2026-10-27',
+      monthlyBasic: 300,
+      monthlyAllowances: 30,
+      unpaidDayRate: 10,
+      otRate: 2.5,
+    });
+
+    const draft = await createPayrollDraft(adminUser, {
+      employeeId: newHire.id,
+      year: 2026,
+      month: 10,
+    });
+
+    // 4 payable days @ (300 / 30) = 40.000 JOD
+    expect(parseFloat(draft.basicEarned)).toBe(40);
+    // 4 actual workdays = 4.000 JOD transportation allowance
+    expect(parseFloat(draft.allowancesEarned)).toBe(4);
+    // Friday is NOT an absence deduction
+    expect(parseFloat(draft.unpaidDays)).toBe(0);
+    expect(parseFloat(draft.grossPay)).toBe(44); // 40 basic + 4 allowances
   });
 });
