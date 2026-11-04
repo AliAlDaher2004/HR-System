@@ -23,7 +23,7 @@ export default async function PayrollAdjustmentsPage({
   }
 
   const resolvedParams = await searchParams;
-  const currentMonth = resolvedParams.month || new Date().toISOString().slice(0, 7);
+  const currentMonth = resolvedParams.month || '2026-10';
   const initialType = resolvedParams.type || 'ALL';
 
   const sheetData = await getMonthlyPayrollAdjustmentSheet(user, currentMonth);

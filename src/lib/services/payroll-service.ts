@@ -1311,8 +1311,8 @@ export async function updatePayrollDraft(
 
   const [payrollRecord] = await db.select().from(schema.payroll).where(eq(schema.payroll.id, data.payrollId));
   if (!payrollRecord) throw new Error('كشف الراتب غير موجود');
-  if (payrollRecord.status !== 'DRAFT') {
-    throw new Error('تعديل كشف الراتب متاح فقط لكشوف الرواتب التي في حالة مسودة (DRAFT).');
+  if (payrollRecord.status === 'PAID') {
+    throw new Error('تعديل كشف الراتب غير متاح للكشوف التي تم صرفها (PAID).');
   }
 
   const [emp] = await db.select().from(schema.employees).where(eq(schema.employees.id, payrollRecord.employeeId));
@@ -1762,7 +1762,7 @@ export async function getMonthlyPayrollAdjustmentSheet(
       if (draft.allowancesEarned !== undefined && draft.allowancesEarned !== null) {
         allowancesEarned = parseFloat(draft.allowancesEarned);
       }
-      if (draft.deliveryAllowance !== undefined && parseFloat(draft.deliveryAllowance || '0') > 0) {
+      if (draft.deliveryAllowance !== undefined && draft.deliveryAllowance !== null) {
         deliveryAllowance = parseFloat(draft.deliveryAllowance);
       }
       bonus = parseFloat(draft.gratuities || '0');
@@ -1774,7 +1774,7 @@ export async function getMonthlyPayrollAdjustmentSheet(
         otherDeductions = draftOtherDeductions;
       }
       notes = draft.notes || '';
-      if (parseFloat(draft.loanDeduction || '0') > 0) {
+      if (draft.loanDeduction !== undefined && draft.loanDeduction !== null) {
         loanDeduction = parseFloat(draft.loanDeduction);
       } else {
         loanDeduction = await getEmployeeExpectedLoanDeduction(db, emp.id, month);
@@ -1984,8 +1984,8 @@ export async function saveMonthlyPayrollAdjustments(
     let targetPayrollId: string | null = null;
 
     if (existing) {
-      if (existing.status !== 'DRAFT') {
-        // Skip updating locked/paid/approved payrolls to preserve approved state
+      if (existing.status === 'PAID' || existing.status === 'CANCELLED') {
+        // Skip updating locked/paid payrolls to preserve paid state
         continue;
       }
       await updatePayrollDraft(actor, {
