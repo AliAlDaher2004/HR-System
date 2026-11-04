@@ -1,28 +1,19 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { PayslipData } from '@/lib/services/payslip-service';
 import { Printer } from 'lucide-react';
 import { SalaryReceiptView } from './SalaryReceiptView';
 
 export function BatchPayslipsPrintView({ payslips }: { payslips: PayslipData[] }) {
-  // Pair payslips two-by-two so exactly 2 payslips fit on 1 A4 portrait page
-  const pages: PayslipData[][] = useMemo(() => {
-    const res: PayslipData[][] = [];
-    for (let i = 0; i < payslips.length; i += 2) {
-      res.push(payslips.slice(i, i + 2));
-    }
-    return res;
-  }, [payslips]);
-
   return (
     <div className="w-full max-w-4xl mx-auto py-4 px-2 md:px-4 font-sans select-none" dir="rtl">
-      {/* Print Styles for 2 Payslips Per A4 Sheet */}
+      {/* Print Styles: Each payslip is strictly 1 A4 page */}
       <style>{`
         @media print {
           @page {
             size: A4 portrait;
-            margin: 4mm 5mm 4mm 5mm;
+            margin: 8mm 10mm;
           }
 
           html, body {
@@ -31,7 +22,7 @@ export function BatchPayslipsPrintView({ payslips }: { payslips: PayslipData[] }
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;
-            font-size: 8pt !important;
+            font-size: 9pt !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
@@ -40,53 +31,31 @@ export function BatchPayslipsPrintView({ payslips }: { payslips: PayslipData[] }
             display: none !important;
           }
 
-          .a4-sheet-page {
+          .payslip-page-wrapper {
             width: 100% !important;
-            height: 288mm !important;
-            max-height: 288mm !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            box-shadow: none !important;
-            border: none !important;
             page-break-after: always !important;
             break-after: page !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: space-between !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
             box-sizing: border-box !important;
-            overflow: hidden !important;
           }
 
-          .payslip-half-container {
-            width: 100% !important;
-            height: 140mm !important;
-            max-height: 140mm !important;
-            box-sizing: border-box !important;
-            overflow: hidden !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: flex-start !important;
+          .payslip-page-wrapper:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
           }
 
           .payslip-card {
             width: 100% !important;
             max-width: 100% !important;
             box-sizing: border-box !important;
-            border: 1pt solid #475569 !important;
-            padding: 3mm 4mm !important;
-          }
-
-          .cut-line-separator {
-            height: 6mm !important;
-            margin: 0 !important;
-            box-sizing: border-box !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
+            border: 1.5pt solid #1e293b !important;
+            padding: 6mm 7mm !important;
+            margin: 0 auto !important;
           }
         }
       `}</style>
@@ -96,63 +65,52 @@ export function BatchPayslipsPrintView({ payslips }: { payslips: PayslipData[] }
         <div>
           <h2 className="text-sm font-bold text-black flex items-center gap-1.5">
             <span>🖨️</span>
-            <span>طباعة قسائم الرواتب (قسيمتان في كل صفحة A4)</span>
+            <span>طباعة قسائم الرواتب الرسمية (سند استلام راتب)</span>
           </h2>
-          <p className="text-[#505050] text-xs mt-0.5">
+          <p className="text-[#505050] text-xs mt-1">
             إجمالي عدد الموظفين: <span className="font-bold text-black">{payslips.length}</span> موظفاً
             <span className="mx-2 text-slate-400">|</span>
-            إجمالي أوراق الطباعة: <span className="font-bold text-blue-900 bg-blue-100 px-2 py-0.2 rounded border border-blue-300 font-mono">{pages.length}</span> ورقة A4 فقط
+            تم ضبط كل قسيمة لتتسع تماماً في صفحة A4 واحدة دون أي امتداد
           </p>
+          <div className="mt-1 text-xs text-blue-900 bg-blue-50 border border-blue-200 rounded px-2.5 py-1">
+            💡 <strong>لطباعة قسيمتين في كل ورقة:</strong> من نافذة الطباعة في المتصفح، افتح المزيد من الإعدادات (More settings) واختر <strong>Pages per sheet: 2</strong> وسيتم دمج كل قسيمتين تلقائياً وبأعلى جودة.
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button
             onClick={() => window.print()}
-            className="win-btn font-black text-xs px-5 py-2 flex items-center gap-2 bg-[#008080] text-white hover:bg-[#006666] shadow cursor-pointer"
+            className="win-btn font-black text-xs px-5 py-2.5 flex items-center gap-2 bg-[#008080] text-white hover:bg-[#006666] shadow cursor-pointer"
           >
             <Printer className="w-4 h-4" />
-            <span>طباعة كافة القسائم (PDF)</span>
+            <span>طباعة كافة القسائم ({payslips.length})</span>
           </button>
         </div>
       </div>
 
-      {/* Payslips Container - Grouped in pairs of 2 per A4 sheet */}
+      {/* Payslips Container - 1 Payslip per page wrapper */}
       <div className="space-y-8 print:space-y-0">
         {payslips.length === 0 ? (
           <div className="bg-white p-8 text-center text-slate-500 rounded-xl border border-slate-300">
             لا توجد قسائم رواتب مطابقة لشروط الفحص للطباعة
           </div>
         ) : (
-          pages.map((pair, pageIdx) => (
+          payslips.map((payslip, idx) => (
             <div
-              key={`a4-page-${pageIdx}`}
-              className="a4-sheet-page bg-white p-3 md:p-4 mb-6 print:mb-0 print:p-0 print:border-none shadow-md print:shadow-none border border-slate-300 rounded"
+              key={`${payslip.employeeNo}-${idx}`}
+              className="payslip-page-wrapper bg-white p-4 md:p-6 mb-6 print:mb-0 print:p-0 shadow-md print:shadow-none border border-slate-300 print:border-none rounded"
             >
-              {/* Page Number Badge on Screen View */}
-              <div className="text-[10px] font-mono text-slate-400 mb-2 flex justify-between no-print">
-                <span>صفحة A4 رقم: {pageIdx + 1} من {pages.length}</span>
-                <span>(تحتوي على قسيمتي راتب)</span>
+              {/* Screen-only page header */}
+              <div className="text-[11px] font-mono text-slate-500 mb-2 flex justify-between items-center no-print border-b pb-1">
+                <span>
+                  قسيمة موظف ({idx + 1} من {payslips.length}): <strong>{payslip.employeeName}</strong> (رقم: {payslip.employeeNo})
+                </span>
+                <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px]">
+                  صفحة A4 مستقلة
+                </span>
               </div>
 
-              {pair.map((payslip, itemIdx) => (
-                <React.Fragment key={`${payslip.employeeNo}-${pageIdx}-${itemIdx}`}>
-                  <div className="payslip-half-container w-full">
-                    <SalaryReceiptView payslip={payslip} />
-                  </div>
-
-                  {/* Cut-line separator between payslip 1 and payslip 2 on the same sheet */}
-                  {itemIdx === 0 && pair.length > 1 && (
-                    <div className="cut-line-separator relative flex items-center justify-center my-3 print:my-0 text-slate-400 select-none">
-                      <div className="w-full border-b border-dashed border-slate-500" />
-                      <span className="absolute bg-white px-3 text-[9px] font-mono text-slate-600 flex items-center gap-1.5 border border-slate-300 rounded-full">
-                        <span>✂</span>
-                        <span>مكان القص — قسيمة نصف صفحة A4</span>
-                        <span>✂</span>
-                      </span>
-                    </div>
-                  )}
-                </React.Fragment>
-              ))}
+              <SalaryReceiptView payslip={payslip} />
             </div>
           ))
         )}

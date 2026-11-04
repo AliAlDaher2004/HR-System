@@ -25,6 +25,31 @@ export default async function PayslipPage({
 
   return (
     <div className="min-h-screen bg-slate-100 py-8 px-4 flex flex-col items-center">
+      {/* Print Styles for Single Payslip */}
+      <style>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 8mm 10mm;
+          }
+          html, body {
+            background: white !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+          .payslip-card {
+            border: 1.5pt solid #1e293b !important;
+            padding: 6mm 7mm !important;
+            box-shadow: none !important;
+          }
+        }
+      `}</style>
+
       {/* Top action bar (hidden during print) */}
       <div className="w-full max-w-3xl flex justify-between items-center mb-6 no-print">
         <Link
