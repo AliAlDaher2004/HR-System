@@ -794,8 +794,11 @@ export async function createPayrollDraft(
   const earlyDepartureDeduction = Math.round(earlyDepartureMinutes * minuteDeductionRate * 1000) / 1000;
 
   if (data.basicEarned !== undefined && !isDailyWorker) {
-    otRate = Math.round((basicEarned / 120) * 1000) / 1000;
-    unpaidDayRate = Math.round((basicEarned / 30) * 1000) / 1000;
+    const fullMonthlyBasic = activeContract?.monthlyBasic ? parseFloat(activeContract.monthlyBasic) : basicEarned;
+    otRate = Math.round((fullMonthlyBasic / 120) * 1000) / 1000;
+    unpaidDayRate = (activeContract?.unpaidDayRate && parseFloat(activeContract.unpaidDayRate) > 0)
+      ? parseFloat(activeContract.unpaidDayRate)
+      : Math.round((fullMonthlyBasic / 30) * 1000) / 1000;
   }
 
   const [inserted] = await db.insert(schema.payroll).values({
@@ -1422,6 +1425,12 @@ export async function updatePayrollDraft(
   const [emp] = await db.select().from(schema.employees).where(eq(schema.employees.id, payrollRecord.employeeId));
   const settings = await getSystemSettings();
 
+  let activeContract: any = null;
+  if (payrollRecord.contractId) {
+    const [c] = await db.select().from(schema.contracts).where(eq(schema.contracts.id, payrollRecord.contractId));
+    activeContract = c || null;
+  }
+
   const updatedBasicEarned = data.basicEarned !== undefined ? data.basicEarned : parseFloat(payrollRecord.basicEarned || '0');
   if (updatedBasicEarned < 0) throw new Error('الراتب الأساسي لا يمكن أن يكون سالباً');
 
@@ -1432,11 +1441,8 @@ export async function updatePayrollDraft(
     dynamicMinuteRate = dRate > 0 ? (dRate / 480) : 0;
   } else {
     let bSalary = updatedBasicEarned;
-    if (payrollRecord.contractId && data.basicEarned === undefined) {
-      const [contract] = await db.select().from(schema.contracts).where(eq(schema.contracts.id, payrollRecord.contractId));
-      if (contract && parseFloat(contract.monthlyBasic) > 0) {
-        bSalary = parseFloat(contract.monthlyBasic);
-      }
+    if (activeContract && parseFloat(activeContract.monthlyBasic) > 0) {
+      bSalary = parseFloat(activeContract.monthlyBasic);
     }
     dynamicMinuteRate = bSalary > 0 ? (bSalary / 14400) : 0;
   }
@@ -1493,11 +1499,21 @@ export async function updatePayrollDraft(
 
   if (updatedAllowancesEarned < 0) throw new Error('بدل المواصلات لا يمكن أن يكون سالباً');
 
+  const effectiveStart = emp?.startDate && emp.startDate > payrollRecord.periodStart ? emp.startDate : payrollRecord.periodStart;
+  const effectiveEnd = emp?.endDate && emp.endDate < payrollRecord.periodEnd ? emp.endDate : payrollRecord.periodEnd;
+  const isPartialMonth = effectiveStart > payrollRecord.periodStart || Boolean(emp?.endDate && emp.endDate < payrollRecord.periodEnd);
+
+  const fullMonthlyBasis = (isPartialMonth && activeContract?.monthlyBasic)
+    ? parseFloat(activeContract.monthlyBasic)
+    : updatedBasicEarned;
+
   let otRate = parseFloat(payrollRecord.otRate || '0');
   let unpaidDayRate = parseFloat(payrollRecord.unpaidDayRate || '0');
   if (data.basicEarned !== undefined && !isDailyWorker) {
-    otRate = Math.round((updatedBasicEarned / 120) * 1000) / 1000;
-    unpaidDayRate = Math.round((updatedBasicEarned / 30) * 1000) / 1000;
+    otRate = Math.round((fullMonthlyBasis / 120) * 1000) / 1000;
+    unpaidDayRate = (activeContract?.unpaidDayRate && parseFloat(activeContract.unpaidDayRate) > 0 && isPartialMonth)
+      ? parseFloat(activeContract.unpaidDayRate)
+      : Math.round((fullMonthlyBasis / 30) * 1000) / 1000;
   }
 
   const autoLoanDeduction = await syncEmployeeLoanRepaymentsForPayroll(db, payrollRecord.employeeId, data.payrollId, payrollRecord.periodEnd, actor.id);
@@ -1932,15 +1948,19 @@ export async function getMonthlyPayrollAdjustmentSheet(
       loanDeduction = await getEmployeeExpectedLoanDeduction(db, emp.id, month);
     }
 
+    const effectiveFullBasic = fullMonthlyBasic > 0 ? fullMonthlyBasic : (activeContract?.monthlyBasic ? parseFloat(activeContract.monthlyBasic) : basicEarned);
     const calculatedOtRate = isDailyWorker
       ? (dailyRate > 0 ? (dailyRate / 4) : 0)
-      : (basicEarned > 0 ? (basicEarned / 120) : 0);
+      : (effectiveFullBasic > 0 ? (effectiveFullBasic / 120) : 0);
     const otRate = (activeContract?.otRate && parseFloat(activeContract.otRate) > 0 && !isLegacyOtRate(parseFloat(activeContract.otRate)))
       ? parseFloat(activeContract.otRate)
       : Math.round(calculatedOtRate * 1000) / 1000;
     const otTotal = Math.round(otHours * otRate * 1000) / 1000;
 
-    const unpaidDayRate = isDailyWorker ? 0 : Math.round((basicEarned / 30) * 1000) / 1000;
+    const contractUnpaidDayRate = activeContract?.unpaidDayRate ? parseFloat(activeContract.unpaidDayRate) : 0;
+    const unpaidDayRate = isDailyWorker
+      ? 0
+      : (contractUnpaidDayRate > 0 ? contractUnpaidDayRate : Math.round((effectiveFullBasic / 30) * 1000) / 1000);
     const unpaidDeduction = isDailyWorker ? 0 : Math.round(unpaidDays * unpaidDayRate * 1000) / 1000;
 
     const minuteDeductionRate = isDailyWorker
