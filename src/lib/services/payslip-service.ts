@@ -1,5 +1,5 @@
 import { getDb, schema } from '../../db';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
 import { UserSession, assertCanViewFinancials } from '../auth/rbac';
 import { computeNetPayroll, isLegacyOtRate } from './payroll-service';
 import { getSystemSettings } from './settings-service';
@@ -225,8 +225,8 @@ export async function getBatchPayslipData(
     .innerJoin(schema.employees, eq(schema.payroll.employeeId, schema.employees.id));
 
   const records = conditions.length > 0
-    ? await query.where(and(...conditions))
-    : await query;
+    ? await query.where(and(...conditions)).orderBy(asc(schema.employees.employeeNo))
+    : await query.orderBy(asc(schema.employees.employeeNo));
 
   const allUsers = await db.select().from(schema.users);
   const userMap = new Map(allUsers.map((u: any) => [u.id, u.fullName]));
@@ -310,5 +310,10 @@ export async function getBatchPayslipData(
       paymentMethod: record.paymentMethod,
       paymentReference: record.paymentReference,
     };
-  });
+  }).sort((a: any, b: any) =>
+    String(a.employeeNo || '').localeCompare(String(b.employeeNo || ''), undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    })
+  );
 }

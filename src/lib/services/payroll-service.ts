@@ -1,5 +1,5 @@
 import { getDb, schema } from '../../db';
-import { eq, and, or, sql, desc, gte, lte } from 'drizzle-orm';
+import { eq, and, or, sql, desc, asc, gte, lte } from 'drizzle-orm';
 import { UserSession, RBAC, AuthorizationError, requireRole, assertCanApprovePayroll, assertCanViewFinancials } from '../auth/rbac';
 import { logAuditEvent } from '../auth/audit';
 import { getSystemSettings } from './settings-service';
@@ -303,10 +303,10 @@ export async function getPayrolls(
   }
 
   const rows = conditions.length > 0
-    ? await query.where(and(...conditions)).orderBy(desc(schema.payroll.periodStart))
-    : await query.orderBy(desc(schema.payroll.periodStart));
+    ? await query.where(and(...conditions)).orderBy(desc(schema.payroll.periodStart), asc(schema.employees.employeeNo))
+    : await query.orderBy(desc(schema.payroll.periodStart), asc(schema.employees.employeeNo));
 
-  return rows.map((p: any) => {
+  const mapped = rows.map((p: any) => {
     const calc = computeNetPayroll({
       employmentType: p.employmentType,
       workedDays: p.workedDays,
@@ -351,6 +351,10 @@ export async function getPayrolls(
       dailyEarnings: calc.dailyEarnings.toFixed(3),
       socialSecurityDeduction: calc.socialSecurityDeduction.toFixed(3),
     };
+  });
+
+  return mapped.sort((a: any, b: any) => {
+    return String(a.employeeNo || '').localeCompare(String(b.employeeNo || ''), undefined, { numeric: true, sensitivity: 'base' });
   });
 }
 
@@ -2062,6 +2066,10 @@ export async function getMonthlyPayrollAdjustmentSheet(
       payrollStatus,
     });
   }
+
+  rows.sort((a, b) => {
+    return String(a.employeeNo || '').localeCompare(String(b.employeeNo || ''), undefined, { numeric: true, sensitivity: 'base' });
+  });
 
   const summary = {
     totalEmployees: rows.length,

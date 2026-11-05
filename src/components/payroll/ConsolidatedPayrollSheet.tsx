@@ -87,10 +87,15 @@ export function ConsolidatedPayrollSheet({
   const probationaryCount = rows.filter((r) => r.employmentType === 'PROBATIONARY').length;
   const dailyCount = rows.filter((r) => r.employmentType === 'DAILY_WORKER').length;
 
-  // Filtered rows for the selected sheet
+  // Filtered rows for the selected sheet (sorted naturally by employeeNo)
   const displayedRows = useMemo(() => {
-    if (selectedType === 'ALL') return rows;
-    return rows.filter((r) => r.employmentType === selectedType);
+    const filtered = selectedType === 'ALL' ? rows : rows.filter((r) => r.employmentType === selectedType);
+    return [...filtered].sort((a, b) => {
+      return String(a.employeeNo || '').localeCompare(String(b.employeeNo || ''), undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+    });
   }, [rows, selectedType]);
 
   // Dynamic sheet title

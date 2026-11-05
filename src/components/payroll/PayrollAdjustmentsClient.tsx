@@ -223,7 +223,13 @@ export function PayrollAdjustmentsClient({
 
   // Calculate live row metrics and totals
   const calculatedRows = useMemo(() => {
-    return initialRows.map((r) => {
+    const sorted = [...initialRows].sort((a, b) =>
+      String(a.employeeNo || '').localeCompare(String(b.employeeNo || ''), undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      })
+    );
+    return sorted.map((r) => {
       const edit = rowEdits[r.employeeId] || {
         basicEarned: r.basicEarned,
         allowancesEarned: r.allowancesEarned,
@@ -354,7 +360,12 @@ export function PayrollAdjustmentsClient({
         return false;
       }
       return true;
-    });
+    }).sort((a, b) =>
+      String(a.employeeNo || '').localeCompare(String(b.employeeNo || ''), undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      })
+    );
   }, [calculatedRows, searchTerm, selectedDept, selectedType, onlyWithAdjustments]);
 
   // Totals computed across currently displayed/filtered rows

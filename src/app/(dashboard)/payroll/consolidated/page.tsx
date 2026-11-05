@@ -88,6 +88,11 @@ export default async function ConsolidatedPayrollPage({
       totalDeductions,
       netPay,
     };
+  }).sort((a: any, b: any) => {
+    return String(a.employeeNo || '').localeCompare(String(b.employeeNo || ''), undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
   });
 
   async function handleApproveMonthlyStatement(formData: FormData) {
